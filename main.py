@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.scheduler.reminder_scheduler import start_scheduler, stop_scheduler
-from app.api.routes import clinics, patients, appointments, webhooks
+from app.api.routes import clinics, patients, appointments, webhooks, auth
 from app.core.config import settings
 
 
@@ -31,6 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["Clinics"])
 app.include_router(patients.router, prefix="/api/v1/patients", tags=["Patients"])
 app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["Appointments"])

@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.db.supabase_client import get_supabase
+from app.core.dependencies import get_current_clinic
+from fastapi import Depends
 
 router = APIRouter()
 
@@ -22,7 +24,7 @@ class PatientUpdate(BaseModel):
 
 
 @router.post("/add")
-def add_patient(data: PatientCreate):
+def add_patient(data: PatientCreate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     try:
         resp = supabase.table("patients").insert({
@@ -38,7 +40,7 @@ def add_patient(data: PatientCreate):
 
 
 @router.get("/clinic/{clinic_id}")
-def get_patients(clinic_id: str):
+def get_patients(clinic_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     resp = supabase.table("patients").select("*").eq("clinic_id", clinic_id).order("created_at", desc=True).execute()
     return {"patients": resp.data, "total": len(resp.data)}
