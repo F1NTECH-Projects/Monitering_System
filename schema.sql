@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS clinics (
     owner_email               VARCHAR,
     address                   TEXT,
     is_active                 BOOLEAN DEFAULT false,
+    password_hash             VARCHAR,
     razorpay_subscription_id  VARCHAR,
     created_at                TIMESTAMP WITH TIME ZONE DEFAULT now()
 );

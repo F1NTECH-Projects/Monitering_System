@@ -4,6 +4,8 @@ from typing import Optional
 from datetime import datetime
 from app.db.supabase_client import get_supabase
 from app.services.whatsapp import send_booking_confirmation
+from app.core.dependencies import get_current_clinic
+from fastapi import Depends
 
 router = APIRouter()
 
@@ -23,7 +25,7 @@ class AppointmentUpdate(BaseModel):
 
 
 @router.post("/schedule")
-def schedule_appointment(data: AppointmentCreate):
+def schedule_appointment(data: AppointmentCreate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     try:
         
@@ -63,7 +65,7 @@ def schedule_appointment(data: AppointmentCreate):
 
 
 @router.get("/clinic/{clinic_id}")
-def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None):
+def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     query = supabase.table("appointments")\
         .select("*, patients(name, phone)")\
@@ -82,7 +84,7 @@ def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optiona
 
 
 @router.post("/{appointment_id}/mark-noshow")
-def mark_no_show(appointment_id: str):
+def mark_no_show(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     """Manually mark an appointment as no-show and send rebook message."""
     supabase = get_supabase()
     from app.services.whatsapp import send_noshow_rebook
@@ -117,7 +119,7 @@ def mark_no_show(appointment_id: str):
 
 
 @router.post("/{appointment_id}/complete")
-def complete_appointment(appointment_id: str):
+def complete_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     supabase.table("appointments").update({"status": "completed"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment marked as completed"}
