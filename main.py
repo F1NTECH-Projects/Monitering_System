@@ -46,4 +46,3 @@ def root():
 def health_check():
     return {"status": "healthy"}
 
-print(f"Starting Clinic Reminder System API on port ")
