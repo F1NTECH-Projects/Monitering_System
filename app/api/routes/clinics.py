@@ -60,7 +60,7 @@ def register_clinic(data: ClinicRegister):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{clinic_id}")
+@router.get("/{clinic_id}/stats")
 def get_clinic(clinic_id: str):
     supabase = get_supabase()
     resp = supabase.table("clinics").select("*").eq("id", clinic_id).execute()
@@ -69,7 +69,7 @@ def get_clinic(clinic_id: str):
     return resp.data[0]
 
 
-@router.get("/{clinic_id}/stats")
+@router.get("/{clinic_id}")
 def get_clinic_stats(clinic_id: str):
     """Dashboard stats for the clinic."""
     supabase = get_supabase()
