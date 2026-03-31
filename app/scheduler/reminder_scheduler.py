@@ -16,8 +16,7 @@ def check_and_send_reminders():
     """Find appointments in the next 23-25 hours and send WhatsApp reminders."""
     if not acquire_lock("reminder_job"):
         return
-    try:
-        logger.info("Scheduler: checking upcoming appointments...")
+    logger.info("Scheduler: checking upcoming appointments...")
     supabase = get_supabase()
 
     window_start = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
@@ -73,8 +72,7 @@ def check_and_handle_noshows():
     """Find appointments that passed X minutes ago and are still scheduled — mark as no-show."""
     if not acquire_lock("noshow_job"):
         return
-    try:
-        logger.info("Scheduler: checking no-shows...")
+    logger.info("Scheduler: checking no-shows...")
     supabase = get_supabase()
 
     cutoff = datetime.utcnow() - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
