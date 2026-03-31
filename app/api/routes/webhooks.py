@@ -21,7 +21,7 @@ async def razorpay_webhook(request: Request):
 
 
     expected = hmac.new(
-        settings.RAZORPAY_KEY_SECRET.encode(),
+        settings.RAZORPAY_WEBHOOK_SECRET.encode(),
         body,
         hashlib.sha256
     ).hexdigest()
