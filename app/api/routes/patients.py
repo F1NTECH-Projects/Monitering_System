@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from app.db.supabase_client import get_supabase
 from app.core.dependencies import get_current_clinic
@@ -11,9 +11,17 @@ router = APIRouter()
 class PatientCreate(BaseModel):
     clinic_id: str
     name: str
-    phone: str                 
+    phone: str
     age: Optional[int] = None
     notes: Optional[str] = ""
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        import re
+        if not re.match(r"^91[6-9]\d{9}$", v):
+            raise ValueError("Phone must be in format 919876543210 (India E.164)")
+        return v
 
 
 class PatientUpdate(BaseModel):

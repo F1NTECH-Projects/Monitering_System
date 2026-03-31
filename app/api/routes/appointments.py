@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
@@ -25,7 +25,7 @@ class AppointmentUpdate(BaseModel):
 
 
 @router.post("/schedule")
-def schedule_appointment(data: AppointmentCreate, current_clinic=Depends(get_current_clinic)):
+def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     try:
         
@@ -49,10 +49,11 @@ def schedule_appointment(data: AppointmentCreate, current_clinic=Depends(get_cur
         
         if data.send_confirmation:
             patient = supabase.table("patients").select("name, phone").eq("id", data.patient_id).execute()
-            clinic  = supabase.table("clinics").select("name").eq("id", data.clinic_id).execute()
+            clinic  = supabase.table("clinics").select("name").eq("id", current_clinic["id"]).execute()
             if patient.data and clinic.data:
                 appt_str = appt_dt.strftime("%d %b %Y at %I:%M %p")
-                send_booking_confirmation(
+                background_tasks.add_task(
+                    send_booking_confirmation,
                     patient_name     = patient.data[0]["name"],
                     patient_phone    = patient.data[0]["phone"],
                     clinic_name      = clinic.data[0]["name"],

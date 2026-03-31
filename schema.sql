@@ -51,3 +51,10 @@ CREATE INDEX IF NOT EXISTS idx_appointments_time      ON appointments(appointmen
 CREATE INDEX IF NOT EXISTS idx_appointments_reminder  ON appointments(reminder_sent);
 CREATE INDEX IF NOT EXISTS idx_patients_clinic        ON patients(clinic_id);
 CREATE INDEX IF NOT EXISTS idx_message_logs_appt      ON message_logs(appointment_id);
+
+CREATE TABLE IF NOT EXISTS scheduler_locks (
+    job_name    VARCHAR PRIMARY KEY,
+    worker_id   INTEGER,
+    acquired_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    expires_at  TIMESTAMP WITH TIME ZONE NOT NULL
+);
