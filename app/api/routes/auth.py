@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from app.db.supabase_client import get_supabase
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.dependencies import get_current_clinic
@@ -11,12 +11,12 @@ class RegisterRequest(BaseModel):
     name: str
     phone: str
     owner_name: str
-    owner_email: str
+    owner_email: EmailStr
     password: str
     address: str = ""
 
 class LoginRequest(BaseModel):
-    owner_email: str
+    owner_email: EmailStr
     password: str
 
 @router.post("/register", status_code=201)

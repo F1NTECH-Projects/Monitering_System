@@ -6,6 +6,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.db.supabase_client import get_supabase
 from app.services.whatsapp import send_reminder, send_noshow_rebook
 from app.core.config import settings
+from app.scheduler.lock import acquire_lock, release_lock
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -13,7 +14,10 @@ scheduler = BackgroundScheduler()
 
 def check_and_send_reminders():
     """Find appointments in the next 23-25 hours and send WhatsApp reminders."""
-    logger.info("Scheduler: checking upcoming appointments...")
+    if not acquire_lock("reminder_job"):
+        return
+    try:
+        logger.info("Scheduler: checking upcoming appointments...")
     supabase = get_supabase()
 
     window_start = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
@@ -60,12 +64,17 @@ def check_and_send_reminders():
             }).eq("id", appt["id"]).execute()
 
     except Exception as e:
-        logger.error(f"Scheduler reminder job failed: {e}")
+        logger.error("Scheduler reminder job failed: %s", e)
+    finally:
+        release_lock("reminder_job")
 
 
 def check_and_handle_noshows():
-    """Find appointments that passed X minutes ago and are still 'scheduled' — mark as no-show."""
-    logger.info("Scheduler: checking no-shows...")
+    """Find appointments that passed X minutes ago and are still scheduled — mark as no-show."""
+    if not acquire_lock("noshow_job"):
+        return
+    try:
+        logger.info("Scheduler: checking no-shows...")
     supabase = get_supabase()
 
     cutoff = datetime.utcnow() - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
@@ -106,7 +115,9 @@ def check_and_handle_noshows():
             }).execute()
 
     except Exception as e:
-        logger.error(f"Scheduler no-show job failed: {e}")
+        logger.error("Scheduler no-show job failed: %s", e)
+    finally:
+        release_lock("noshow_job")
 
 
 def start_scheduler():

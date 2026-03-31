@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 from app.db.supabase_client import get_supabase
@@ -23,7 +23,7 @@ class ClinicUpdate(BaseModel):
 
 
 @router.post("/register")
-def register_clinic(data: ClinicRegister):
+def register_clinic(data: ClinicRegister, background_tasks: BackgroundTasks):
     supabase = get_supabase()
     try:
         # Create clinic
@@ -39,22 +39,26 @@ def register_clinic(data: ClinicRegister):
         clinic = resp.data[0]
 
         
-        payment = create_subscription(
-            clinic_name  = data.name,
-            owner_email  = data.owner_email,
-            owner_phone  = data.phone,
-        )
+        def _setup_subscription(clinic_id: str):
+            try:
+                payment = create_subscription(
+                    clinic_name  = data.name,
+                    owner_email  = data.owner_email,
+                    owner_phone  = data.phone,
+                )
+                supabase.table("clinics").update({
+                    "razorpay_subscription_id": payment["subscription_id"],
+                }).eq("id", clinic_id).execute()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error("Razorpay setup failed: %s", e)
 
-        
-        supabase.table("clinics").update({
-            "razorpay_subscription_id": payment["subscription_id"],
-        }).eq("id", clinic["id"]).execute()
+        background_tasks.add_task(_setup_subscription, clinic["id"])
 
         return {
-            "success":     True,
-            "clinic":      clinic,
-            "payment_url": payment["payment_url"],
-            "message":     "Share payment_url with the clinic owner to activate their subscription",
+            "success": True,
+            "clinic":  clinic,
+            "message": "Clinic registered. Payment link will be sent shortly.",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
