@@ -36,7 +36,7 @@ def schedule_appointment(data: AppointmentCreate, current_clinic=Depends(get_cur
             raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
         resp = supabase.table("appointments").insert({
-            "clinic_id":        data.clinic_id,
+            "clinic_id":        current_clinic["id"],  # always from JWT
             "patient_id":       data.patient_id,
             "appointment_time": data.appointment_time,
             "notes":            data.notes,
@@ -128,7 +128,7 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
 
 
 @router.patch("/{appointment_id}")
-def update_appointment(appointment_id: str, data: AppointmentUpdate):
+def update_appointment(appointment_id: str, data: AppointmentUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     updates = {k: v for k, v in data.dict().items() if v is not None}
     if not updates:
@@ -138,7 +138,7 @@ def update_appointment(appointment_id: str, data: AppointmentUpdate):
 
 
 @router.delete("/{appointment_id}")
-def cancel_appointment(appointment_id: str):
+def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     supabase.table("appointments").update({"status": "cancelled"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment cancelled"}
