@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app.db.supabase_client import get_supabase
 from app.services.whatsapp import send_booking_confirmation
 from app.core.dependencies import get_current_clinic
@@ -30,7 +30,9 @@ def schedule_appointment(data: AppointmentCreate, current_clinic=Depends(get_cur
     try:
         
         appt_dt = datetime.fromisoformat(data.appointment_time)
-        if appt_dt <= datetime.utcnow():
+        # Make both timezone-aware for safe comparison
+        appt_dt_utc = appt_dt.astimezone(timezone.utc).replace(tzinfo=None) if appt_dt.tzinfo else appt_dt
+        if appt_dt_utc <= datetime.utcnow():
             raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
         resp = supabase.table("appointments").insert({

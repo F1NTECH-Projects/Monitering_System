@@ -60,8 +60,8 @@ def register_clinic(data: ClinicRegister):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{clinic_id}/stats")
-def get_clinic(clinic_id: str):
+@router.get("/{clinic_id}/dashboard")
+def get_clinic(clinic_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     resp = supabase.table("clinics").select("*").eq("id", clinic_id).execute()
     if not resp.data:
@@ -70,7 +70,7 @@ def get_clinic(clinic_id: str):
 
 
 @router.get("/{clinic_id}")
-def get_clinic_stats(clinic_id: str):
+def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_clinic)):
     """Dashboard stats for the clinic."""
     supabase = get_supabase()
     from datetime import datetime, timedelta

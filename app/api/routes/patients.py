@@ -28,7 +28,7 @@ def add_patient(data: PatientCreate, current_clinic=Depends(get_current_clinic))
     supabase = get_supabase()
     try:
         resp = supabase.table("patients").insert({
-            "clinic_id": data.clinic_id,
+            "clinic_id": current_clinic["id"],  # always use JWT clinic_id
             "name":      data.name,
             "phone":     data.phone,
             "age":       data.age,
@@ -47,7 +47,7 @@ def get_patients(clinic_id: str, current_clinic=Depends(get_current_clinic)):
 
 
 @router.get("/{patient_id}")
-def get_patient(patient_id: str):
+def get_patient(patient_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     resp = supabase.table("patients").select("*, appointments(*)").eq("id", patient_id).execute()
     if not resp.data:
@@ -56,7 +56,7 @@ def get_patient(patient_id: str):
 
 
 @router.patch("/{patient_id}")
-def update_patient(patient_id: str, data: PatientUpdate):
+def update_patient(patient_id: str, data: PatientUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     updates = {k: v for k, v in data.dict().items() if v is not None}
     if not updates:
@@ -66,7 +66,7 @@ def update_patient(patient_id: str, data: PatientUpdate):
 
 
 @router.delete("/{patient_id}")
-def delete_patient(patient_id: str):
+def delete_patient(patient_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     supabase.table("patients").delete().eq("id", patient_id).execute()
     return {"success": True, "message": "Patient deleted"}

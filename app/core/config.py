@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     RAZORPAY_KEY_ID: str
     RAZORPAY_KEY_SECRET: str
+    RAZORPAY_WEBHOOK_SECRET: str = ""
 
 
     APP_ENV: str = "development"
@@ -35,3 +36,10 @@ settings = Settings()
 
 
 # Add these lines inside the Settings class manually - see next command
+
+
+def validate_settings():
+    if settings.APP_ENV == "production" and settings.JWT_SECRET == "change-this-to-a-long-random-secret":
+        raise RuntimeError("JWT_SECRET must be set in production")
+
+validate_settings()
