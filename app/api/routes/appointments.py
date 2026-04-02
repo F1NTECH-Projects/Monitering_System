@@ -143,3 +143,34 @@ def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_c
     supabase = get_supabase()
     supabase.table("appointments").update({"status": "cancelled"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment cancelled"}
+
+
+@router.get("/logs/{clinic_id}")
+def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+    """Get all WhatsApp message logs for a clinic."""
+    supabase = get_supabase()
+    resp = supabase.table("message_logs")\
+        .select("*, appointments(appointment_time, status, patients(name, phone))")\
+        .eq("appointments.clinic_id", clinic_id)\
+        .order("sent_at", desc=True)\
+        .limit(100)\
+        .execute()
+    return {"logs": resp.data, "total": len(resp.data)}
+
+
+@router.post("/trigger-reminders")
+def trigger_reminders_manually(current_clinic=Depends(get_current_clinic)):
+    """Manually trigger the reminder job — for testing."""
+    from app.scheduler.reminder_scheduler import check_and_send_reminders
+    import threading
+    threading.Thread(target=check_and_send_reminders).start()
+    return {"success": True, "message": "Reminder job triggered in background"}
+
+
+@router.post("/trigger-noshow-check")
+def trigger_noshow_manually(current_clinic=Depends(get_current_clinic)):
+    """Manually trigger no-show detection — for testing."""
+    from app.scheduler.reminder_scheduler import check_and_handle_noshows
+    import threading
+    threading.Thread(target=check_and_handle_noshows).start()
+    return {"success": True, "message": "No-show check triggered in background"}

@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Optional
 from app.db.supabase_client import get_supabase
 from app.services.razorpay_service import create_subscription
+from fastapi import Depends
+from app.core.dependencies import get_current_clinic
 
 router = APIRouter()
 

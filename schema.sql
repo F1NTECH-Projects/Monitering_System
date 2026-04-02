@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS patients (
     id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     clinic_id  UUID REFERENCES clinics(id) ON DELETE CASCADE,
     name       VARCHAR NOT NULL,
-    phone      VARCHAR NOT NULL,   -- Format: 919876543210
+    phone      VARCHAR NOT NULL,   
     age        INTEGER,
     notes      TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
