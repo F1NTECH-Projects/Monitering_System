@@ -126,6 +126,16 @@ def mark_no_show(appointment_id: str, current_clinic=Depends(get_current_clinic)
 @router.post("/{appointment_id}/complete")
 def complete_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "completed"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment marked as completed"}
 
@@ -133,6 +143,16 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
 @router.patch("/{appointment_id}")
 def update_appointment(appointment_id: str, data: AppointmentUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -143,6 +163,16 @@ def update_appointment(appointment_id: str, data: AppointmentUpdate, current_cli
 @router.delete("/{appointment_id}")
 def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "cancelled"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment cancelled"}
 

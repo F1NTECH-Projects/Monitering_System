@@ -76,12 +76,14 @@ def check_and_handle_noshows():
     supabase = get_supabase()
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
+    lower_bound = datetime.now(timezone.utc) - timedelta(hours=48)
 
     try:
         response = (
             supabase.table("appointments")
             .select("*, patients(name, phone), clinics(name)")
             .eq("status", "scheduled")
+            .gte("appointment_time", lower_bound.isoformat())
             .lte("appointment_time", cutoff.isoformat())
             .execute()
         )
