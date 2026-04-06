@@ -84,7 +84,7 @@ def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optiona
         query = query.gte("appointment_time", f"{date}T00:00:00")\
                      .lte("appointment_time", f"{date}T23:59:59")
 
-    resp = query.execute()
+    resp = query.range((page - 1) * per_page, page * per_page - 1).execute()
     return {"appointments": resp.data, "total": len(resp.data)}
 
 
