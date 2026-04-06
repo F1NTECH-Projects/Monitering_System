@@ -69,6 +69,8 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
 
 @router.get("/clinic/{clinic_id}")
 def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
     query = supabase.table("appointments")\
         .select("*, patients(name, phone)")\
@@ -162,8 +164,8 @@ def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic))
 def trigger_reminders_manually(current_clinic=Depends(get_current_clinic)):
     """Manually trigger the reminder job — for testing."""
     from app.scheduler.reminder_scheduler import check_and_send_reminders
-    import threading
-    threading.Thread(target=check_and_send_reminders).start()
+    
+    background_tasks.add_task(check_and_send_reminders)
     return {"success": True, "message": "Reminder job triggered in background"}
 
 
@@ -171,6 +173,6 @@ def trigger_reminders_manually(current_clinic=Depends(get_current_clinic)):
 def trigger_noshow_manually(current_clinic=Depends(get_current_clinic)):
     """Manually trigger no-show detection — for testing."""
     from app.scheduler.reminder_scheduler import check_and_handle_noshows
-    import threading
-    threading.Thread(target=check_and_handle_noshows).start()
+    
+    background_tasks.add_task(check_and_handle_noshows)
     return {"success": True, "message": "No-show check triggered in background"}
