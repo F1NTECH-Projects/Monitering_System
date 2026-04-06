@@ -19,8 +19,8 @@ def check_and_send_reminders():
     logger.info("Scheduler: checking upcoming appointments...")
     supabase = get_supabase()
 
-    window_start = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
-    window_end   = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
+    window_start = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
+    window_end   = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
 
     try:
         response = (
@@ -75,7 +75,7 @@ def check_and_handle_noshows():
     logger.info("Scheduler: checking no-shows...")
     supabase = get_supabase()
 
-    cutoff = datetime.utcnow() - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
 
     try:
         response = (
@@ -124,7 +124,7 @@ def start_scheduler():
         trigger=IntervalTrigger(hours=settings.REMINDER_INTERVAL_HOURS),
         id="reminder_job",
         replace_existing=True,
-        next_run_time=datetime.utcnow() 
+        next_run_time=datetime.now(timezone.utc) 
     )
     scheduler.add_job(
         check_and_handle_noshows,

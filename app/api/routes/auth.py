@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from app.db.supabase_client import get_supabase
 from app.core.security import hash_password, verify_password, create_access_token
@@ -50,6 +50,7 @@ def register(data: RegisterRequest):
     }
 
 @router.post("/login")
+@limiter.limit("5/minute")
 def login(data: LoginRequest):
     supabase = get_supabase()
 

@@ -2,6 +2,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import decode_token
 from app.db.supabase_client import get_supabase
+from cachetools import TTLCache
+
+_clinic_cache = TTLCache(maxsize=500, ttl=300)  # 5 min TTL
 
 bearer_scheme = HTTPBearer()
 
@@ -23,6 +26,8 @@ def get_current_clinic(
         )
     # Verify clinic still exists and is active
     supabase = get_supabase()
+    if clinic_id in _clinic_cache:
+        return _clinic_cache[clinic_id]
     resp = supabase.table("clinics").select("id, name, is_active").eq("id", clinic_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Clinic not found")
@@ -32,4 +37,5 @@ def get_current_clinic(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Clinic subscription is not active"
         )
+    _clinic_cache[clinic_id] = clinic
     return clinic

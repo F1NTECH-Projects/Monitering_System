@@ -32,7 +32,7 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
         appt_dt = datetime.fromisoformat(data.appointment_time)
         # Make both timezone-aware for safe comparison
         appt_dt_utc = appt_dt.astimezone(timezone.utc).replace(tzinfo=None) if appt_dt.tzinfo else appt_dt
-        if appt_dt_utc <= datetime.utcnow():
+        if appt_dt_utc <= datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
         resp = supabase.table("appointments").insert({
@@ -68,7 +68,7 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
 
 
 @router.get("/clinic/{clinic_id}")
-def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, current_clinic=Depends(get_current_clinic)):
+def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, page: int = 1, per_page: int = 50, current_clinic=Depends(get_current_clinic)):
     if clinic_id != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()

@@ -85,8 +85,8 @@ def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_clinic))
     supabase = get_supabase()
     from datetime import datetime, timedelta
 
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()
-    today_end   = datetime.utcnow().replace(hour=23, minute=59, second=59).isoformat()
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0).isoformat()
+    today_end   = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
 
     total_patients = supabase.table("patients").select("id", count="exact").eq("clinic_id", clinic_id).execute()
     today_appts    = supabase.table("appointments").select("id, status", count="exact")\
