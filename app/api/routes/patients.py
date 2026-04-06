@@ -68,7 +68,7 @@ def get_patient(patient_id: str, current_clinic=Depends(get_current_clinic)):
 @router.patch("/{patient_id}")
 def update_patient(patient_id: str, data: PatientUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    updates = {k: v for k, v in data.dict().items() if v is not None}
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     resp = supabase.table("patients").update(updates).eq("id", patient_id).execute()

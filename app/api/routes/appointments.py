@@ -133,7 +133,7 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
 @router.patch("/{appointment_id}")
 def update_appointment(appointment_id: str, data: AppointmentUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    updates = {k: v for k, v in data.dict().items() if v is not None}
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     resp = supabase.table("appointments").update(updates).eq("id", appointment_id).execute()
@@ -161,7 +161,7 @@ def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic))
 
 
 @router.post("/trigger-reminders")
-def trigger_reminders_manually(current_clinic=Depends(get_current_clinic)):
+def trigger_reminders_manually(background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
     """Manually trigger the reminder job — for testing."""
     from app.scheduler.reminder_scheduler import check_and_send_reminders
     
@@ -170,7 +170,7 @@ def trigger_reminders_manually(current_clinic=Depends(get_current_clinic)):
 
 
 @router.post("/trigger-noshow-check")
-def trigger_noshow_manually(current_clinic=Depends(get_current_clinic)):
+def trigger_noshow_manually(background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
     """Manually trigger no-show detection — for testing."""
     from app.scheduler.reminder_scheduler import check_and_handle_noshows
     
