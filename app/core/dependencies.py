@@ -3,6 +3,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import decode_token
 from app.db.supabase_client import get_supabase
 from cachetools import TTLCache
+import threading
+_cache_lock = threading.Lock()
 
 _clinic_cache = TTLCache(maxsize=500, ttl=300)  # 5 min TTL
 
@@ -37,5 +39,6 @@ def get_current_clinic(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Clinic subscription is not active"
         )
-    _clinic_cache[clinic_id] = clinic
+    with _cache_lock:
+        _clinic_cache[clinic_id] = clinic
     return clinic

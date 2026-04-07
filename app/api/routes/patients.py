@@ -48,22 +48,17 @@ def add_patient(data: PatientCreate, current_clinic=Depends(get_current_clinic))
 
 
 @router.get("/clinic/{clinic_id}")
-def get_patients(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+def get_patients(clinic_id: str, page: int = 1, per_page: int = 50, current_clinic=Depends(get_current_clinic)):
     if clinic_id != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
-    resp = supabase.table("patients").select("*").eq("clinic_id", clinic_id).order("created_at", desc=True).execute()
+    resp = supabase.table("patients").select("*").eq("clinic_id", clinic_id).order("created_at", desc=True).range((page - 1) * per_page, page * per_page - 1).execute()
     return {"patients": resp.data, "total": len(resp.data)}
 
 
 @router.get("/{patient_id}")
 def get_patient(patient_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    existing = get_supabase().table("patients").select("clinic_id").eq("id", patient_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     existing = get_supabase().table("patients").select("clinic_id").eq("id", patient_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -83,11 +78,6 @@ def update_patient(patient_id: str, data: PatientUpdate, current_clinic=Depends(
         raise HTTPException(status_code=404, detail="Patient not found")
     if existing.data[0]["clinic_id"] != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    existing = get_supabase().table("patients").select("clinic_id").eq("id", patient_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -98,11 +88,6 @@ def update_patient(patient_id: str, data: PatientUpdate, current_clinic=Depends(
 @router.delete("/{patient_id}")
 def delete_patient(patient_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    existing = get_supabase().table("patients").select("clinic_id").eq("id", patient_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     existing = get_supabase().table("patients").select("clinic_id").eq("id", patient_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Patient not found")

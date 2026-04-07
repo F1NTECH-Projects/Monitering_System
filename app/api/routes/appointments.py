@@ -131,11 +131,6 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
         raise HTTPException(status_code=404, detail="Appointment not found")
     if existing.data[0]["clinic_id"] != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "completed"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment marked as completed"}
 
@@ -143,11 +138,6 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
 @router.patch("/{appointment_id}")
 def update_appointment(appointment_id: str, data: AppointmentUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -168,17 +158,14 @@ def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_c
         raise HTTPException(status_code=404, detail="Appointment not found")
     if existing.data[0]["clinic_id"] != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    if existing.data[0]["clinic_id"] != current_clinic["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "cancelled"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment cancelled"}
 
 
 @router.get("/logs/{clinic_id}")
 def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     """Get all WhatsApp message logs for a clinic."""
     supabase = get_supabase()
     resp = supabase.table("message_logs")\
