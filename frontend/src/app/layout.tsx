@@ -1,3 +1,4 @@
+import AuthGuard from "@/components/AuthGuard";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -34,7 +35,7 @@ export default function RootLayout({
         <QueryProvider>
           <Sidebar />
           <MainContent>
-            {children}
+            <AuthGuard>{children}</AuthGuard>
           </MainContent>
         </QueryProvider>
       </body>
