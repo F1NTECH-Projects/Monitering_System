@@ -30,11 +30,10 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
     try:
         
         appt_dt = datetime.fromisoformat(data.appointment_time)
-        # Make both timezone-aware for safe comparison
         if appt_dt.tzinfo is None:
-        appt_dt = appt_dt.replace(tzinfo=timezone.utc)
-    else:
-        appt_dt = appt_dt.astimezone(timezone.utc)
+            appt_dt = appt_dt.replace(tzinfo=timezone.utc)
+        else:
+            appt_dt = appt_dt.astimezone(timezone.utc)
         if appt_dt <= datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
