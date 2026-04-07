@@ -5,22 +5,18 @@ from slowapi.errors import RateLimitExceeded
 limiter = Limiter(key_func=get_remote_address)
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.scheduler.reminder_scheduler import start_scheduler, stop_scheduler
 from app.api.routes import clinics, patients, appointments, webhooks, auth
 from app.core.config import settings
-
+from app.middleware.cors import add_cors_middleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    
     start_scheduler()
     yield
-    
     stop_scheduler()
-
 
 app = FastAPI(
     title="Clinic Reminder System",
@@ -31,13 +27,8 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"] if settings.APP_ENV == "development" else ["https://yourdomain.com"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+add_cors_middleware(app)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["Clinics"])
@@ -45,13 +36,25 @@ app.include_router(patients.router, prefix="/api/v1/patients", tags=["Patients"]
 app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["Appointments"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["Webhooks"])
 
-
 @app.get("/", tags=["Health"])
 def root():
     return {"status": "running", "message": "Clinic Reminder System API"}
-
 
 @app.get("/health", tags=["Health"])
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/health/detailed", tags=["Health"])
+def detailed_health_check():
+    try:
+        from app.db.supabase_client import get_supabase
+        supabase = get_supabase()
+        supabase.table("clinics").select("id").limit(1).execute()
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "database": db_status,
+    }

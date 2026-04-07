@@ -45,4 +45,4 @@ def validate_settings():
         if len(settings.JWT_SECRET) < 32:
             raise RuntimeError("JWT_SECRET must be at least 32 characters")
         if not settings.RAZORPAY_PLAN_ID:
-            raise RuntimeError("RAZORPAY_PLAN_ID must be set in production")
+            raise RuntimeError("RAZORPAY_PLAN_ID must be set in production")    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,https://yourdomain.com"
