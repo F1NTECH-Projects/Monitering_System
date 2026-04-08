@@ -1,253 +1,314 @@
 "use client";
-
-import { 
-  Users, 
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  MoreVertical,
-  Plus,
-  Phone,
-  MessageSquare,
-  TrendingUp
-} from "lucide-react";
+import { useCallback, useState } from "react";
+import { useAuth } from "@/stores/authStore";
+import { clinicService } from "@/services/api";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
-import { MotionButton } from "@/components/ui/Button";
-import { cn } from "@/lib/utils";
+import dynamic from "next/dynamic";
+import {
+  Users, Calendar, AlertTriangle, MessageSquare, TrendingUp,
+  ArrowUpRight, Clock, CheckCircle2, Activity, Zap, ChevronRight,
+  RefreshCw,
+} from "lucide-react";
+import { useRealtime } from "@/hooks/useRealtime";
 
-const stats = [
-  { 
-    title: "Total Patients", 
-    value: "1,284", 
-    change: "+12.5%", 
-    trend: "up", 
-    icon: Users,
-    color: "text-blue-600",
-    bg: "bg-blue-50 dark:bg-blue-900/20"
-  },
-  { 
-    title: "Appointments Today", 
-    value: "24", 
-    change: "+3 since 8 AM", 
-    trend: "up", 
-    icon: Calendar,
-    color: "text-brand-600",
-    bg: "bg-brand-50 dark:bg-brand-900/20"
-  },
-  { 
-    title: "Reminders Sent", 
-    value: "156", 
-    change: "98% Success Rate", 
-    trend: "up", 
-    icon: MessageSquare,
-    color: "text-emerald-600",
-    bg: "bg-emerald-50 dark:bg-emerald-900/20"
-  },
-  { 
-    title: "No-Shows", 
-    value: "2", 
-    change: "-4% from avg", 
-    trend: "down", 
-    icon: Clock,
-    color: "text-amber-600",
-    bg: "bg-amber-50 dark:bg-amber-900/20"
-  },
+// Lazy-load charts (they're client-only and large)
+const AppointmentChart = dynamic(() => import("@/components/charts/AppointmentChart"), { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+const DeliveryChart    = dynamic(() => import("@/components/charts/DeliveryChart"),    { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+const NoShowChart      = dynamic(() => import("@/components/charts/NoShowChart"),      { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+
+interface Stats {
+  total_patients: number;
+  today_appointments: number;
+  total_no_shows: number;
+}
+
+const RECENT_ACTIVITY = [
+  { id: 1, type: "confirmed", patient: "Arjun Sharma",  time: "2m ago",  icon: CheckCircle2,  color: "#34d399" },
+  { id: 2, type: "reminder",  patient: "Priya Patel",   time: "14m ago", icon: MessageSquare, color: "#818cf8" },
+  { id: 3, type: "no-show",   patient: "Meera Reddy",   time: "1h ago",  icon: AlertTriangle, color: "#fbbf24" },
+  { id: 4, type: "confirmed", patient: "Rahul Verma",   time: "2h ago",  icon: CheckCircle2,  color: "#34d399" },
+  { id: 5, type: "reminder",  patient: "Sneha Gupta",   time: "3h ago",  icon: MessageSquare, color: "#818cf8" },
 ];
 
-const recentAppointments = [
-  { id: 1, name: "Arjun Sharma", time: "10:30 AM", status: "finished", type: "Check-up" },
-  { id: 2, name: "Priya Patel", time: "11:15 AM", status: "upcoming", type: "Consultation" },
-  { id: 3, name: "Rahul Verma", time: "12:00 PM", status: "upcoming", type: "Follow-up" },
-  { id: 4, name: "Sneha Gupta", time: "02:30 PM", status: "upcoming", type: "X-Ray Review" },
+const QUICK_ACTIONS = [
+  { label: "New Appointment",  icon: Calendar,  href: "/appointments", color: "#818cf8" },
+  { label: "Add Patient",      icon: Users,     href: "/patients",     color: "#22d3ee" },
+  { label: "Send All Reminders", icon: Zap,     href: "#",             color: "#34d399" },
+  { label: "View Logs",        icon: Activity,  href: "/logs",         color: "#fbbf24" },
 ];
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
+function CountUp({ target, duration = 900 }: { target: number; duration?: number }) {
+  const [count, setCount] = useState(0);
+  // Run once on first render
+  const [ran, setRan] = useState(false);
+  if (!ran && target > 0) {
+    setRan(true);
+    let start = 0;
+    const step = Math.max(1, Math.ceil(target / (duration / 16)));
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) { setCount(target); clearInterval(timer); }
+      else setCount(start);
+    }, 16);
   }
-};
+  return <>{count || 0}</>;
+}
 
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 }
-};
+export default function DashboardPage() {
+  const clinic = useAuth((s) => s.clinic);
+  const [stats,     setStats]     = useState<Stats | null>(null);
+  const [error,     setError]     = useState("");
+  const [lastSync,  setLastSync]  = useState<Date | null>(null);
+  const [syncing,   setSyncing]   = useState(false);
 
-export default function Dashboard() {
+  const fetchStats = useCallback(async () => {
+    if (!clinic?.id) return;
+    setSyncing(true);
+    try {
+      const r = await clinicService.getStats(clinic.id);
+      setStats(r.data);
+      setLastSync(new Date());
+      setError("");
+    } catch {
+      setError("Failed to load stats");
+    } finally {
+      setSyncing(false);
+    }
+  }, [clinic?.id]);
+
+  // 30-second real-time polling
+  useRealtime(fetchStats, { interval: 30_000 });
+
+  const kpis = [
+    { id: "total_patients",     label: "Total Patients",         icon: Users,        color: "#22d3ee", bg: "rgba(6,182,212,0.1)",   border: "rgba(6,182,212,0.2)",   value: stats?.total_patients ?? 0,       trend: "+12%", desc: "vs last month"  },
+    { id: "today_appointments", label: "Today's Appointments",   icon: Calendar,     color: "#818cf8", bg: "rgba(99,102,241,0.1)",  border: "rgba(99,102,241,0.2)",  value: stats?.today_appointments ?? 0,   trend: "+3",   desc: "scheduled today" },
+    { id: "no_shows",           label: "Total No-Shows",         icon: AlertTriangle,color: "#fbbf24", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.2)",  value: stats?.total_no_shows ?? 0,       trend: "-8%",  desc: "all time"        },
+    { id: "messages_sent",      label: "WhatsApp Sent",          icon: MessageSquare,color: "#34d399", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.2)",  value: 94,                               trend: "94%",  desc: "delivery rate"   },
+    { id: "success_rate",       label: "Appointment Rate",       icon: TrendingUp,   color: "#a78bfa", bg: "rgba(167,139,250,0.1)", border: "rgba(167,139,250,0.2)", value: 87,                               trend: "+5%",  desc: "completion rate" },
+  ];
+
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Welcome back, Dr. Ayush!
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Here's what's happening at your clinic today.
-          </p>
+    <div className="page-enter space-y-8">
+      {/* Hero Banner */}
+      <motion.div
+        className="relative overflow-hidden rounded-2xl p-6 lg:p-8"
+        style={{ background: "linear-gradient(135deg, rgba(98,70,234,0.18) 0%, rgba(6,182,212,0.08) 100%)", border: "1px solid rgba(98,70,234,0.25)" }}
+        initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+      >
+        <div className="absolute right-0 top-0 w-64 h-64 opacity-10 pointer-events-none"
+          style={{ background: "radial-gradient(circle at 80% 20%, rgba(98,70,234,0.8), transparent 60%)" }} />
+
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Live Dashboard</span>
+              {lastSync && (
+                <span className="text-[10px] text-[--foreground-muted] hidden sm:inline">
+                  · Last synced {lastSync.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <h2 className="text-2xl lg:text-3xl font-black text-white mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>
+              Good morning, <span className="text-gradient">{clinic?.name ?? "Clinic"}</span> 👋
+            </h2>
+            <p className="text-[--foreground-muted] text-sm">Here&apos;s what&apos;s happening with your clinic today.</p>
+          </div>
+
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Manual refresh */}
+            <motion.button
+              className="btn btn-ghost btn-sm gap-2"
+              onClick={fetchStats}
+              whileTap={{ scale: 0.9 }}
+              style={{ color: "#818cf8", border: "1px solid rgba(99,102,241,0.2)" }}
+              title="Refresh stats"
+            >
+              <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+              <span className="text-xs hidden sm:inline">{syncing ? "Syncing…" : "Refresh"}</span>
+            </motion.button>
+
+            <div className="text-center px-4 py-3 rounded-xl" style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
+              <div className="text-2xl font-black text-white" style={{ fontFamily: "Outfit, sans-serif" }}>
+                {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+              </div>
+              <div className="text-[10px] font-bold text-[--foreground-muted] uppercase tracking-widest mt-0.5">
+                {new Date().toLocaleDateString("en-IN", { weekday: "short" })}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <MotionButton variant="outline" className="glass" whileHover={{ scale: 1.05 }}>
-            View Reports
-          </MotionButton>
-          <MotionButton className="bg-brand-600 hover:bg-brand-700 shadow-brand-500/20 shadow-lg" whileHover={{ scale: 1.05 }}>
-            <Plus size={18} className="mr-2" />
-            Add Record
-          </MotionButton>
+      </motion.div>
+
+      {/* KPI Grid */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-bold text-[--foreground-muted] uppercase tracking-wider">Key Metrics</h3>
+          {error && <span className="text-xs text-red-400">{error}</span>}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
+          {kpis.map((kpi, idx) => (
+            <motion.div key={kpi.id} className="kpi-card cursor-pointer"
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.07, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ scale: 1.02 }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
+                <kpi.icon size={16} style={{ color: kpi.color }} />
+              </div>
+              <div className="text-2xl lg:text-3xl font-black text-white mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>
+                {stats || kpi.id === "messages_sent" || kpi.id === "success_rate"
+                  ? <CountUp target={kpi.value} />
+                  : <div className="shimmer h-7 w-12 rounded-lg mt-1" />
+                }
+              </div>
+              <p className="text-[11px] text-[--foreground-muted] font-medium leading-tight mb-2">{kpi.label}</p>
+              <div className="flex items-center gap-1">
+                <ArrowUpRight size={10} style={{ color: kpi.color }} />
+                <span className="text-[10px] font-bold" style={{ color: kpi.color }}>{kpi.trend}</span>
+                <span className="text-[10px] text-[--foreground-muted] hidden xl:inline">{kpi.desc}</span>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <motion.div 
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
-      >
-        {stats.map((stat, idx) => (
-          <motion.div key={idx} variants={item}>
-            <Card className="overflow-hidden border-none shadow-md hover:shadow-xl transition-all duration-300 group">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className={cn("p-2.5 rounded-xl transition-transform group-hover:scale-110", stat.bg)}>
-                    <stat.icon className={cn(stat.color)} size={22} />
-                  </div>
-                  {stat.trend === "up" ? (
-                    <div className="flex items-center text-emerald-500 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-full">
-                      <ArrowUpRight size={14} className="mr-0.5" />
-                      {stat.change}
-                    </div>
-                  ) : (
-                    <div className="flex items-center text-blue-500 text-xs font-bold bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full">
-                      <ArrowDownRight size={14} className="mr-0.5" />
-                      {stat.change}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-4">
-                  <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.title}</p>
-                  <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">{stat.value}</h3>
-                </div>
-              </CardContent>
-              <div className={cn("h-1.5 w-full bg-linear-to-r", 
-                stat.color === "text-brand-600" ? "from-brand-500 to-brand-300" :
-                stat.color === "text-blue-600" ? "from-blue-500 to-blue-300" :
-                stat.color === "text-emerald-600" ? "from-emerald-500 to-emerald-300" :
-                "from-amber-500 to-amber-300"
-              )} />
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
+      {/* Charts Row */}
+      <div>
+        <h3 className="text-xs font-bold text-[--foreground-muted] uppercase tracking-wider mb-4">Analytics</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-      {/* Main Grid: Activity + Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Activity Chart Placeholder */}
-        <Card className="lg:col-span-2 border-none shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Appointment Activity</CardTitle>
-              <CardDescription>Weekly overview of scheduled visits</CardDescription>
+          {/* Appointment Trend */}
+          <motion.div className="lg:col-span-2 glass-card p-5"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Weekly Appointments</h4>
+                <p className="text-[10px] text-[--foreground-muted] mt-0.5">Scheduled · Completed · No-Show</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {[{ label: "Scheduled", c: "#818cf8" }, { label: "Done", c: "#34d399" }, { label: "No-Show", c: "#fbbf24" }].map(l => (
+                  <div key={l.label} className="hidden sm:flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: l.c }} />
+                    <span className="text-[10px] text-[--foreground-muted]">{l.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <MotionButton variant="ghost" size="icon">
-              <TrendingUp size={20} className="text-brand-600" />
-            </MotionButton>
-          </CardHeader>
-          <CardContent className="h-[300px] flex items-end justify-between gap-2 pt-4 px-8 pb-10">
-            {[65, 45, 75, 55, 90, 70, 85].map((height, i) => (
-              <motion.div 
-                key={i} 
-                className="w-full bg-linear-to-t from-brand-600/80 to-brand-400/20 rounded-t-lg relative group cursor-pointer"
-                initial={{ height: 0 }}
-                animate={{ height: `${height}%` }}
-                transition={{ duration: 0.8, delay: i * 0.1 }}
-              >
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                  {height} Records
+            <AppointmentChart />
+          </motion.div>
+
+          {/* Completion Rate */}
+          <motion.div className="glass-card p-5"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}>
+            <h4 className="font-bold text-white text-sm mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>Completion Rate</h4>
+            <p className="text-[10px] text-[--foreground-muted] mb-2">Appointments attended vs booked</p>
+            <NoShowChart rate={87} />
+          </motion.div>
+
+          {/* Delivery Chart */}
+          <motion.div className="glass-card p-5 lg:col-span-3"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.48 }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>WhatsApp Delivery</h4>
+                <p className="text-[10px] text-[--foreground-muted] mt-0.5">Messages sent vs delivered by week</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {[{ label: "Delivered", c: "#34d399" }, { label: "Failed", c: "#f87171" }].map(l => (
+                  <div key={l.label} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: l.c }} />
+                    <span className="text-[10px] text-[--foreground-muted]">{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <DeliveryChart />
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Activity + Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Activity Feed */}
+        <motion.div className="lg:col-span-2 glass-card p-5"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Recent Activity</h3>
+              <p className="text-[10px] text-[--foreground-muted] mt-0.5">Latest patient interactions</p>
+            </div>
+            <button className="btn btn-ghost btn-sm gap-1 text-[color:#818cf8] text-xs">
+              View all <ChevronRight size={13} />
+            </button>
+          </div>
+          <div className="space-y-1">
+            {RECENT_ACTIVITY.map((item, idx) => (
+              <motion.div key={item.id}
+                className="flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[rgba(99,102,241,0.05)] cursor-pointer"
+                initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.55 + idx * 0.07 }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${item.color}18`, border: `1px solid ${item.color}28` }}>
+                  <item.icon size={15} style={{ color: item.color }} />
                 </div>
-                <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400">
-                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{item.patient}</p>
+                  <p className="text-[11px] text-[--foreground-muted] capitalize">{item.type} notification</p>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-[--foreground-muted] flex-shrink-0">
+                  <Clock size={10} />{item.time}
                 </div>
               </motion.div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
 
-        {/* Recent Appointments List */}
-        <Card className="border-none shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Upcoming Today</CardTitle>
-            <MotionButton variant="link" className="text-brand-600 text-xs font-bold p-0">
-              View All
-            </MotionButton>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {recentAppointments.map((appt) => (
-              <div key={appt.id} className="flex items-center justify-between group cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs",
-                    appt.status === "finished" ? "bg-emerald-100 text-emerald-600" : "bg-brand-100 text-brand-600"
-                  )}>
-                    {appt.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-brand-600 transition-colors">
-                      {appt.name}
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {appt.type} • {appt.time}
-                    </p>
+        {/* Quick Actions + System Status */}
+        <motion.div className="glass-card p-5"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.57 }}>
+          <div className="mb-4">
+            <h3 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Quick Actions</h3>
+            <p className="text-[10px] text-[--foreground-muted] mt-0.5">Common tasks at a glance</p>
+          </div>
+          <div className="space-y-2">
+            {QUICK_ACTIONS.map((action, idx) => (
+              <motion.a key={action.label} href={action.href}
+                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all group"
+                style={{ background: `${action.color}0d`, border: `1px solid ${action.color}20` }}
+                whileHover={{ x: 4, background: `${action.color}18` }}
+                initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.62 + idx * 0.07 }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${action.color}1a` }}>
+                  <action.icon size={14} style={{ color: action.color }} />
+                </div>
+                <span className="text-sm font-semibold text-white">{action.label}</span>
+                <ChevronRight size={13} className="ml-auto text-[--foreground-muted] transition-transform group-hover:translate-x-1" />
+              </motion.a>
+            ))}
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-[rgba(99,102,241,0.1)]">
+            <p className="text-[10px] font-bold text-[--foreground-muted] uppercase tracking-wider mb-3">System Status</p>
+            <div className="space-y-2">
+              {[
+                { label: "API Backend",  ok: true  },
+                { label: "WhatsApp API", ok: true  },
+                { label: "Scheduler",    ok: true  },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center justify-between">
+                  <span className="text-xs text-[--foreground-muted]">{s.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${s.ok ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+                    <span className={`text-[10px] font-bold ${s.ok ? "text-emerald-400" : "text-red-400"}`}>
+                      {s.ok ? "Online" : "Offline"}
+                    </span>
                   </div>
                 </div>
-                {appt.status === "finished" ? (
-                  <CheckCircle2 size={16} className="text-emerald-500" />
-                ) : (
-                  <MotionButton variant="ghost" size="icon" className="h-8 w-8 text-slate-400 group-hover:text-brand-600">
-                    <ArrowUpRight size={16} />
-                  </MotionButton>
-                )}
-              </div>
-            ))}
-            
-            <MotionButton className="w-full mt-4 glass border-brand-100 text-brand-600 dark:text-brand-400 hover:bg-brand-50" whileHover={{ scale: 1.02 }}>
-              Manage Schedule
-            </MotionButton>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom Section: Quick Links / Notifications */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <Card className="glass border-dashed border-2 hover:border-brand-400 transition-colors cursor-pointer">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-brand-600 rounded-full text-white shadow-lg shadow-brand-600/30">
-              <Plus size={24} />
+              ))}
             </div>
-            <div>
-              <h4 className="font-bold text-slate-900 dark:text-white">Quick Schedule</h4>
-              <p className="text-sm text-slate-500">Add a new appointment in seconds</p>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="glass border-dashed border-2 hover:border-emerald-400 transition-colors cursor-pointer">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-emerald-600 rounded-full text-white shadow-lg shadow-emerald-600/30">
-              <Users size={24} />
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-900 dark:text-white">Register Patient</h4>
-              <p className="text-sm text-slate-500">Onboard a new patient to the system</p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

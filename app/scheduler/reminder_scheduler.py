@@ -11,133 +11,153 @@ from app.scheduler.lock import acquire_lock, release_lock
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
-
 def check_and_send_reminders():
-    """Find appointments in the next 23-25 hours and send WhatsApp reminders."""
     if not acquire_lock("reminder_job"):
+        logger.debug("Reminder job already running, skipping")
         return
-    logger.info("Scheduler: checking upcoming appointments...")
-    supabase = get_supabase()
-
-    window_start = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
-    window_end   = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
-
+    
     try:
-        response = (
-            supabase.table("appointments")
-            .select("*, patients(name, phone), clinics(name)")
-            .eq("status", "scheduled")
-            .eq("reminder_sent", False)
-            .gte("appointment_time", window_start.isoformat())
-            .lte("appointment_time", window_end.isoformat())
-            .execute()
-        )
-
+        logger.info("Starting reminder job...")
+        supabase = get_supabase()
+        
+        window_start = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
+        window_end = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
+        
+        response = supabase.table("appointments").select(
+            "*, patients(name, phone), clinics(name)"
+        ).eq("status", "scheduled").eq("reminder_sent", False).gte(
+            "appointment_time", window_start.isoformat()
+        ).lte("appointment_time", window_end.isoformat()).execute()
+        
         appointments = response.data or []
-        logger.info(f"Scheduler: found {len(appointments)} appointments to remind")
-
+        logger.info(f"Found {len(appointments)} appointments to remind")
+        
+        sent_count = 0
+        failed_count = 0
+        
         for appt in appointments:
-            patient    = appt.get("patients", {})
-            clinic     = appt.get("clinics", {})
-            appt_dt    = datetime.fromisoformat(appt["appointment_time"])
-            appt_str   = appt_dt.strftime("%d %b %Y at %I:%M %p")
-
-            success = send_reminder(
-                patient_name     = patient.get("name", "Patient"),
-                patient_phone    = patient.get("phone"),
-                clinic_name      = clinic.get("name", "Clinic"),
-                appointment_time = appt_str,
-            )
-
-            
-            supabase.table("message_logs").insert({
-                "appointment_id": appt["id"],
-                "patient_phone":  patient.get("phone"),
-                "message_type":   "reminder",
-                "success":        success,
-            }).execute()
-
-            
-            supabase.table("appointments").update({
-                "reminder_sent": True
-            }).eq("id", appt["id"]).execute()
-
+            try:
+                patient = appt.get("patients", {})
+                clinic = appt.get("clinics", {})
+                appt_dt = datetime.fromisoformat(appt["appointment_time"])
+                appt_str = appt_dt.strftime("%d %b %Y at %I:%M %p")
+                
+                success = send_reminder(
+                    patient_name=patient.get("name", "Patient"),
+                    patient_phone=patient.get("phone"),
+                    clinic_name=clinic.get("name", "Clinic"),
+                    appointment_time=appt_str,
+                )
+                
+                supabase.table("message_logs").insert({
+                    "appointment_id": appt["id"],
+                    "patient_phone": patient.get("phone"),
+                    "message_type": "reminder",
+                    "success": success,
+                }).execute()
+                
+                supabase.table("appointments").update({
+                    "reminder_sent": True
+                }).eq("id", appt["id"]).execute()
+                
+                if success:
+                    sent_count += 1
+                else:
+                    failed_count += 1
+                    
+            except Exception as e:
+                logger.error(f"Failed to process appointment {appt.get('id')}: {e}", exc_info=True)
+                failed_count += 1
+        
+        logger.info(f"Reminder job completed: {sent_count} sent, {failed_count} failed")
+        
     except Exception as e:
-        logger.error("Scheduler reminder job failed: %s", e)
+        logger.error(f"Reminder job failed: {e}", exc_info=True)
     finally:
         release_lock("reminder_job")
 
-
 def check_and_handle_noshows():
-    """Find appointments that passed X minutes ago and are still scheduled — mark as no-show."""
     if not acquire_lock("noshow_job"):
+        logger.debug("No-show job already running, skipping")
         return
-    logger.info("Scheduler: checking no-shows...")
-    supabase = get_supabase()
-
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
-    lower_bound = datetime.now(timezone.utc) - timedelta(hours=48)
-
+    
     try:
-        response = (
-            supabase.table("appointments")
-            .select("*, patients(name, phone), clinics(name)")
-            .eq("status", "scheduled")
-            .gte("appointment_time", lower_bound.isoformat())
-            .lte("appointment_time", cutoff.isoformat())
-            .execute()
-        )
-
+        logger.info("Starting no-show check...")
+        supabase = get_supabase()
+        
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
+        lower_bound = datetime.now(timezone.utc) - timedelta(hours=48)
+        
+        response = supabase.table("appointments").select(
+            "*, patients(name, phone), clinics(name)"
+        ).eq("status", "scheduled").gte(
+            "appointment_time", lower_bound.isoformat()
+        ).lte("appointment_time", cutoff.isoformat()).execute()
+        
         noshows = response.data or []
-        logger.info(f"Scheduler: found {len(noshows)} no-shows")
-
+        logger.info(f"Found {len(noshows)} missed appointments")
+        
         for appt in noshows:
-            patient = appt.get("patients", {})
-            clinic  = appt.get("clinics", {})
-
-            
-            supabase.table("appointments").update({
-                "status": "no_show"
-            }).eq("id", appt["id"]).execute()
-
-            
-            success = send_noshow_rebook(
-                patient_name  = patient.get("name", "Patient"),
-                patient_phone = patient.get("phone"),
-                clinic_name   = clinic.get("name", "Clinic"),
-            )
-
-            supabase.table("message_logs").insert({
-                "appointment_id": appt["id"],
-                "patient_phone":  patient.get("phone"),
-                "message_type":   "no_show_rebook",
-                "success":        success,
-            }).execute()
-
+            try:
+                patient = appt.get("patients", {})
+                clinic = appt.get("clinics", {})
+                
+                supabase.table("appointments").update({
+                    "status": "no_show"
+                }).eq("id", appt["id"]).execute()
+                
+                success = send_noshow_rebook(
+                    patient_name=patient.get("name", "Patient"),
+                    patient_phone=patient.get("phone"),
+                    clinic_name=clinic.get("name", "Clinic"),
+                )
+                
+                supabase.table("message_logs").insert({
+                    "appointment_id": appt["id"],
+                    "patient_phone": patient.get("phone"),
+                    "message_type": "no_show_rebook",
+                    "success": success,
+                }).execute()
+                
+            except Exception as e:
+                logger.error(f"Failed to handle no-show {appt.get('id')}: {e}", exc_info=True)
+        
+        logger.info(f"No-show job completed: {len(noshows)} checked")
+        
     except Exception as e:
-        logger.error("Scheduler no-show job failed: %s", e)
+        logger.error(f"No-show job failed: {e}", exc_info=True)
     finally:
         release_lock("noshow_job")
 
-
 def start_scheduler():
-    scheduler.add_job(
-        check_and_send_reminders,
-        trigger=IntervalTrigger(hours=settings.REMINDER_INTERVAL_HOURS),
-        id="reminder_job",
-        replace_existing=True,
-        next_run_time=datetime.now(timezone.utc) 
-    )
-    scheduler.add_job(
-        check_and_handle_noshows,
-        trigger=IntervalTrigger(minutes=30),
-        id="noshow_job",
-        replace_existing=True,
-    )
-    scheduler.start()
-    logger.info("Scheduler started — reminder + no-show jobs running")
-
+    try:
+        scheduler.add_job(
+            check_and_send_reminders,
+            trigger=IntervalTrigger(hours=settings.REMINDER_INTERVAL_HOURS),
+            id="reminder_job",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),
+            max_instances=1,
+        )
+        
+        scheduler.add_job(
+            check_and_handle_noshows,
+            trigger=IntervalTrigger(minutes=30),
+            id="noshow_job",
+            replace_existing=True,
+            max_instances=1,
+        )
+        
+        scheduler.start()
+        logger.info("Scheduler started successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to start scheduler: {e}", exc_info=True)
+        raise
 
 def stop_scheduler():
-    scheduler.shutdown(wait=False)
-    logger.info("Scheduler stopped")
+    try:
+        scheduler.shutdown(wait=True)
+        logger.info("Scheduler stopped")
+    except Exception as e:
+        logger.error(f"Error stopping scheduler: {e}")
