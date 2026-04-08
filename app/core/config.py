@@ -29,7 +29,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-validate_settings()
 
 
 def validate_settings():
@@ -42,6 +41,3 @@ def validate_settings():
             raise RuntimeError("RAZORPAY_PLAN_ID must be set in production")
         if settings.CORS_ALLOWED_ORIGINS == "*":
             raise RuntimeError("Wildcard CORS not allowed in production")
-
-
-validate_settings()

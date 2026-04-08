@@ -34,7 +34,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 add_cors_middleware(app)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestIDMiddleware)   # outermost — runs first
+app.add_middleware(RequestIDMiddleware)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["Clinics"])
