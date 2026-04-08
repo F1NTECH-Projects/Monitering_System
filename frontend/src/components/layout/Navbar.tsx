@@ -1,4 +1,5 @@
 "use client";
+import { useAuth } from "@/stores/authStore";
 
 import { usePathname } from "next/navigation";
 import { 
@@ -13,6 +14,7 @@ import { MotionButton } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 export default function Navbar() {
+  const clinic = useAuth((s) => s.clinic);
   const pathname = usePathname();
   
   const getPageTitle = () => {
@@ -65,7 +67,7 @@ export default function Navbar() {
 
           <div className="flex items-center gap-3 ml-2 pl-2 border-l border-slate-200 dark:border-slate-800">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-none">City Ortho Care</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-none">{clinic?.name ?? "Clinic"}</p>
               <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider mt-1">Premium Plan</p>
             </div>
             <div className="w-9 h-9 rounded-full bg-linear-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-md cursor-pointer hover:ring-2 hover:ring-brand-400 transition-all">

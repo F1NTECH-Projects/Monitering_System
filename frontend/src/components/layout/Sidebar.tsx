@@ -1,5 +1,6 @@
 "use client";
-
+import { useAuth } from "@/stores/authStore";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -90,7 +91,7 @@ export default function Sidebar() {
               className={cn("w-full justify-start text-danger-500 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 px-2")}
               whileHover={{ x: 5 }}
             >
-              <LogOut size={20} />
+              <LogOut size={20} onClick={handleLogout} style={{cursor:"pointer"}} />
               {!collapsed && <span className="ml-3 font-medium">Log out</span>}
             </MotionButton>
           </div>

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.db.supabase_client import get_supabase
 from app.services.razorpay_service import create_subscription
 from app.core.dependencies import get_current_clinic
+from app.core.cache import invalidate_clinic_cache
 
 router = APIRouter()
 

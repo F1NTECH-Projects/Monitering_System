@@ -46,7 +46,7 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
         resp = supabase.table("appointments").insert({
             "clinic_id": current_clinic["id"],
             "patient_id": data.patient_id,
-            "appointment_time": data.appointment_time,
+            "appointment_time": appt_dt.isoformat(),  # normalized UTC
             "notes": data.notes,
             "status": "scheduled",
             "reminder_sent": False,
@@ -170,13 +170,15 @@ def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_c
     return {"success": True, "message": "Appointment cancelled"}
 
 @router.get("/logs/{clinic_id}")
-def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+def get_message_logs(clinic_id: str, page: int = 1, per_page: int = 50, current_clinic=Depends(get_current_clinic)):
     if clinic_id != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    
     supabase = get_supabase()
-    resp = supabase.table("message_logs").select("*, appointments(appointment_time, status, patients(name, phone))").eq("appointments.clinic_id", clinic_id).order("sent_at", desc=True).limit(100).execute()
-    
+    appt_resp = supabase.table("appointments").select("id").eq("clinic_id", clinic_id).execute()
+    appt_ids = [a["id"] for a in appt_resp.data]
+    if not appt_ids:
+        return {"logs": [], "total": 0}
+    resp = supabase.table("message_logs")        .select("*, appointments(appointment_time, status, patients(name, phone))")        .in_("appointment_id", appt_ids)        .order("sent_at", desc=True)        .range((page - 1) * per_page, page * per_page - 1)        .execute()
     return {"logs": resp.data, "total": len(resp.data)}
 
 @router.post("/trigger-reminders")

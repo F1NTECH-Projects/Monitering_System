@@ -42,7 +42,7 @@ def register(request: Request, data: RegisterRequest):
         "owner_email": data.owner_email,
         "password_hash": hashed,
         "address": data.address,
-        "is_active": False,
+        "is_active": True,
     }).execute()
     
     clinic = resp.data[0]
