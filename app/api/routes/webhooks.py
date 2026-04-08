@@ -23,9 +23,9 @@ async def razorpay_webhook(request: Request):
         signature = request.headers.get("X-Razorpay-Signature", "")
         
         expected = hmac.new(
-            settings.RAZORPAY_WEBHOOK_SECRET.encode(),
-            body,
-            hashlib.sha256
+            key=settings.RAZORPAY_WEBHOOK_SECRET.encode(),
+            msg=body,
+            digestmod=hashlib.sha256
         ).hexdigest()
         
         if not hmac.compare_digest(expected, signature):

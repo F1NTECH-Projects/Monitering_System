@@ -12,46 +12,30 @@ def acquire_lock(job_name: str) -> bool:
     now = datetime.now(timezone.utc)
     worker_id = os.getpid()
     expires_at = (now + timedelta(seconds=LOCK_TTL_SECONDS)).isoformat()
-    
+
     try:
-        existing = supabase.table(LOCK_TABLE).select("*").eq("job_name", job_name).execute()
-        
-        if existing.data:
-            lock = existing.data[0]
-            lock_expires = datetime.fromisoformat(lock["expires_at"])
-            if lock_expires.tzinfo is None:
-                lock_expires = lock_expires.replace(tzinfo=timezone.utc)
-            
-            if lock_expires > now:
-                logger.debug(f"Lock held by worker {lock['worker_id']} for {job_name}")
-                return False
-            
-            resp = supabase.table(LOCK_TABLE).update({
-                "worker_id": worker_id,
-                "expires_at": expires_at,
-                "acquired_at": now.isoformat(),
-            }).eq("job_name", job_name).execute()
-            
-            if not resp.data:
-                logger.debug(f"Failed to acquire expired lock for {job_name}")
-                return False
-        else:
-            resp = supabase.table(LOCK_TABLE).insert({
-                "job_name": job_name,
-                "worker_id": worker_id,
-                "expires_at": expires_at,
-                "acquired_at": now.isoformat(),
-            }).execute()
-            
-            if not resp.data:
-                logger.error(f"Failed to create lock for {job_name}")
-                return False
-        
+        # Atomic: delete expired lock first, then insert
+        supabase.table(LOCK_TABLE).delete().eq(
+            "job_name", job_name
+        ).lt("expires_at", now.isoformat()).execute()
+
+        resp = supabase.table(LOCK_TABLE).insert({
+            "job_name": job_name,
+            "worker_id": worker_id,
+            "expires_at": expires_at,
+            "acquired_at": now.isoformat(),
+        }).execute()
+
+        if not resp.data:
+            logger.debug(f"Lock already held for {job_name}")
+            return False
+
         logger.info(f"Lock acquired for {job_name} (worker {worker_id})")
         return True
-        
+
     except Exception as e:
-        logger.error(f"Lock acquire failed for {job_name}: {e}", exc_info=True)
+        # Insert conflict = another worker just acquired it
+        logger.debug(f"Lock acquire failed for {job_name}: {e}")
         return False
 
 def release_lock(job_name: str) -> bool:

@@ -22,8 +22,6 @@ def validate_jwt_secret():
     if char_types < 3:
         raise ValueError("JWT_SECRET must include mixed character types")
 
-validate_jwt_secret()
-
 def hash_password(password: str) -> str:
     return pwd_context.hash(password, rounds=12)
 
@@ -31,6 +29,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    validate_jwt_secret()
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(hours=settings.JWT_EXPIRE_HOURS))

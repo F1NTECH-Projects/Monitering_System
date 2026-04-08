@@ -5,8 +5,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-WHATSAPP_API_URL = f"https://graph.facebook.com/v18.0/{settings.WHATSAPP_PHONE_ID}/messages"
-WHATSAPP_API_TIMEOUT = 10
+WHATSAPP_API_TIMEOUT = 5
 
 def _headers():
     return {
@@ -31,6 +30,7 @@ def send_text_message(to_phone: str, message: str) -> bool:
         logger.warning(f"Message truncated from {len(message)} chars")
         message = message[:4096]
     
+    url = f"https://graph.facebook.com/v18.0/{settings.WHATSAPP_PHONE_ID}/messages"
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -41,7 +41,7 @@ def send_text_message(to_phone: str, message: str) -> bool:
     
     try:
         resp = requests.post(
-            WHATSAPP_API_URL,
+            url,
             json=payload,
             headers=_headers(),
             timeout=WHATSAPP_API_TIMEOUT
