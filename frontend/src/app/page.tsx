@@ -1,7 +1,20 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useAuth } from "@/stores/authStore";
 import { clinicService } from "@/services/api";
+import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
+import {
+  Users, Calendar, AlertTriangle, MessageSquare, TrendingUp,
+  ArrowUpRight, Clock, CheckCircle2, Activity, Zap, ChevronRight,
+  RefreshCw,
+} from "lucide-react";
+import { useRealtime } from "@/hooks/useRealtime";
+
+// Lazy-load charts (they're client-only and large)
+const AppointmentChart = dynamic(() => import("@/components/charts/AppointmentChart"), { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+const DeliveryChart    = dynamic(() => import("@/components/charts/DeliveryChart"),    { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+const NoShowChart      = dynamic(() => import("@/components/charts/NoShowChart"),      { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
 
 interface Stats {
   total_patients: number;

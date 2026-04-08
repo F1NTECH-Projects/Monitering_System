@@ -12,3 +12,4 @@ def get_supabase() -> Client:
             if _client is None:
                 _client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
     return _client
+    return _client

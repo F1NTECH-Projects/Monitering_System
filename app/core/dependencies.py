@@ -4,6 +4,7 @@ from app.core.security import decode_token
 from app.db.supabase_client import get_supabase
 from app.core.cache import get_cached_clinic, set_cached_clinic
 
+
 bearer_scheme = HTTPBearer()
 
 def get_current_clinic(
