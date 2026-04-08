@@ -179,7 +179,7 @@ export default function Sidebar() {
           onClick={handleLogout}
           className="btn btn-danger btn-sm w-full justify-start gap-2.5"
         >
-          <LogOut size={16} />
+          <span onClick={handleLogout} style={{cursor:"pointer"}}><LogOut size={16} /></span>
           {!collapsed && <span className="text-xs">Log Out</span>}
         </button>
       </div>

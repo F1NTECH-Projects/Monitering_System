@@ -20,6 +20,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
 };
 
 export default function Navbar() {
+  const clinic = useAuth((s) => s.clinic);
   const clinic          = useAuth((s) => s.clinic);
   const pathname        = usePathname();
   const router          = useRouter();

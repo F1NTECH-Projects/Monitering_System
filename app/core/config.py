@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+validate_settings()
 
 
 def validate_settings():
