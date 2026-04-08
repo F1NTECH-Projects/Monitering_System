@@ -2,6 +2,7 @@ import uuid
 import logging
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.core.logging import request_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -10,9 +11,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         
-        # Add to all logs
-        with logging.LoggerAdapter(logger, {"request_id": request_id}):
+        # Add to all logs using contextvars
+        token = request_id_var.set(request_id)
+        try:
             response = await call_next(request)
+        finally:
+            request_id_var.reset(token)
         
         response.headers["X-Request-ID"] = request_id
         return response

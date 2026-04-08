@@ -34,7 +34,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 add_cors_middleware(app)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestIDMiddleware)   # outermost — runs first
+app.add_middleware(RequestIDMiddleware)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(clinics.router, prefix="/api/v1/clinics", tags=["Clinics"])
@@ -63,3 +63,7 @@ def detailed_health_check():
         "status": "healthy" if db_status == "healthy" else "degraded",
         "database": db_status,
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
