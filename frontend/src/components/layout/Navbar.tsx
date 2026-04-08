@@ -88,20 +88,10 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Center — Search */}
-        <div className="hidden lg:flex flex-1 max-w-sm mx-8">
-          <motion.div className="relative w-full" animate={{ scale: searchFocused ? 1.02 : 1 }} transition={{ duration: 0.2 }}>
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--foreground-muted] pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search patients, appointments..."
-              className="input-field pl-9 pr-16 h-9 text-sm"
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-[--foreground-muted]"
-              style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
-              <Command size={9} /><span>K</span>
+          <div className="flex items-center gap-3 ml-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-none">{clinic?.name ?? "Clinic"}</p>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider mt-1">Premium Plan</p>
             </div>
           </motion.div>
         </div>

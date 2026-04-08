@@ -16,8 +16,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,https://yourdomain.com"
 
-    # JWT
-    JWT_SECRET: str = "change-this-to-a-long-random-secret"
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
     REMINDER_INTERVAL_HOURS: int = 1
@@ -30,6 +29,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+validate_settings()
 
 
 def validate_settings():

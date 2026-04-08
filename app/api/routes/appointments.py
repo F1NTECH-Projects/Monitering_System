@@ -178,12 +178,7 @@ def get_message_logs(clinic_id: str, page: int = 1, per_page: int = 50, current_
     appt_ids = [a["id"] for a in appt_resp.data]
     if not appt_ids:
         return {"logs": [], "total": 0}
-    resp = supabase.table("message_logs") \
-        .select("*, appointments(appointment_time, status, patients(name, phone))") \
-        .in_("appointment_id", appt_ids) \
-        .order("sent_at", desc=True) \
-        .range((page - 1) * per_page, page * per_page - 1) \
-        .execute()
+    resp = supabase.table("message_logs")        .select("*, appointments(appointment_time, status, patients(name, phone))")        .in_("appointment_id", appt_ids)        .order("sent_at", desc=True)        .range((page - 1) * per_page, page * per_page - 1)        .execute()
     return {"logs": resp.data, "total": len(resp.data)}
 
 @router.post("/trigger-reminders")

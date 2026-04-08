@@ -1,4 +1,6 @@
 "use client";
+import { useAuth } from "@/stores/authStore";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/stores/authStore";
@@ -130,38 +132,24 @@ export default function Sidebar() {
                     )}
                   </AnimatePresence>
 
-                  {isActive && !collapsed && (
-                    <div
-                      className="ml-auto w-1.5 h-1.5 rounded-full animate-pulse"
-                      style={{ background: item.color }}
-                    />
-                  )}
-                </div>
-              </Link>
-            </motion.div>
-          );
-        })}
-      </nav>
-
-      {/* Bottom section */}
-      <div className="p-3 border-t border-[rgba(99,102,241,0.12)] space-y-1">
-        {/* Clinic Info */}
-        {!collapsed && (
-          <div className="px-3 py-3 mb-1 rounded-xl" style={{ background: "rgba(99,102,241,0.07)" }}>
-            <div className="flex items-center gap-2.5">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #6246ea, #22d3ee)" }}
-              >
-                {clinic?.name?.charAt(0) ?? "C"}
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-xs font-semibold text-[--foreground] truncate">
-                  {clinic?.name ?? "Clinic"}
-                </p>
-                <p className="text-[10px] text-[--foreground-muted] font-medium">Premium Plan</p>
-              </div>
-            </div>
+        <div className="space-y-3">
+          <button
+            onClick={toggle}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            {!collapsed && <span className="font-medium text-sm">Collapse</span>}
+          </button>
+          
+          <div className={cn("pt-4 border-t border-slate-200 dark:border-slate-800", collapsed ? "px-1" : "px-2")}>
+            <MotionButton 
+              variant="ghost" 
+              className={cn("w-full justify-start text-danger-500 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 px-2")}
+              whileHover={{ x: 5 }}
+            >
+              <LogOut size={20} onClick={handleLogout} style={{cursor:"pointer"}} />
+              {!collapsed && <span className="ml-3 font-medium">Log out</span>}
+            </MotionButton>
           </div>
         )}
 
