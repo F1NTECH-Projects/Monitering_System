@@ -9,31 +9,11 @@ client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_S
 PLAN_AMOUNT_PAISE = 79900   
 PLAN_CURRENCY = "INR"
 
-_plan_id: str = None  
-
-
 def get_or_create_plan() -> str:
-    """Get existing plan ID or create one. Call once at startup."""
-    global _plan_id
-    if _plan_id:
-        return _plan_id
-    try:
-        plan = client.plan.create({
-            "period": "monthly",
-            "interval": 1,
-            "item": {
-                "name": "Clinic Reminder - Monthly",
-                "amount": PLAN_AMOUNT_PAISE,
-                "currency": PLAN_CURRENCY,
-                "description": "Automated WhatsApp appointment reminders",
-            },
-        })
-        _plan_id = plan["id"]
-        logger.info(f"Razorpay plan created: {_plan_id}")
-        return _plan_id
-    except Exception as e:
-        logger.error(f"Razorpay plan creation failed: {e}")
-        raise
+    """Return plan ID from env. Set RAZORPAY_PLAN_ID once and never recreate."""
+    if not settings.RAZORPAY_PLAN_ID:
+        raise RuntimeError("RAZORPAY_PLAN_ID must be set in environment. Create a plan once in Razorpay dashboard and paste the ID.")
+    return settings.RAZORPAY_PLAN_ID
 
 
 def create_subscription(clinic_name: str, owner_email: str, owner_phone: str) -> dict:

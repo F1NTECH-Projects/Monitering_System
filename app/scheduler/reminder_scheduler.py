@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -19,8 +19,8 @@ def check_and_send_reminders():
     logger.info("Scheduler: checking upcoming appointments...")
     supabase = get_supabase()
 
-    window_start = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
-    window_end   = datetime.utcnow() + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
+    window_start = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS - 1)
+    window_end   = datetime.now(timezone.utc) + timedelta(hours=settings.REMINDER_BEFORE_HOURS + 1)
 
     try:
         response = (
@@ -75,13 +75,15 @@ def check_and_handle_noshows():
     logger.info("Scheduler: checking no-shows...")
     supabase = get_supabase()
 
-    cutoff = datetime.utcnow() - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.NOSHOW_CHECK_MINUTES)
+    lower_bound = datetime.now(timezone.utc) - timedelta(hours=48)
 
     try:
         response = (
             supabase.table("appointments")
             .select("*, patients(name, phone), clinics(name)")
             .eq("status", "scheduled")
+            .gte("appointment_time", lower_bound.isoformat())
             .lte("appointment_time", cutoff.isoformat())
             .execute()
         )
@@ -124,7 +126,7 @@ def start_scheduler():
         trigger=IntervalTrigger(hours=settings.REMINDER_INTERVAL_HOURS),
         id="reminder_job",
         replace_existing=True,
-        next_run_time=datetime.utcnow() 
+        next_run_time=datetime.now(timezone.utc) 
     )
     scheduler.add_job(
         check_and_handle_noshows,

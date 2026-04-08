@@ -32,4 +32,30 @@ export const appointmentService = {
   cancel: (id: string) => api.delete(`/appointments/${id}`),
 };
 
+import { useAuth } from "@/stores/authStore";
+
+api.interceptors.request.use((config) => {
+  const token = useAuth.getState().token;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      useAuth.getState().logout();
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
+export const authService = {
+  login: (data: { owner_email: string; password: string }) =>
+    api.post("/auth/login", data),
+  register: (data: unknown) => api.post("/auth/register", data),
+  me: () => api.get("/auth/me"),
+};
+
 export default api;

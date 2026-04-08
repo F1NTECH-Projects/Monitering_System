@@ -28,11 +28,11 @@ class AppointmentUpdate(BaseModel):
 def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
     try:
-        
-        appt_dt = datetime.fromisoformat(data.appointment_time)
-        # Make both timezone-aware for safe comparison
-        appt_dt_utc = appt_dt.astimezone(timezone.utc).replace(tzinfo=None) if appt_dt.tzinfo else appt_dt
-        if appt_dt_utc <= datetime.utcnow():
+        if appt_dt.tzinfo is None:
+            appt_dt = appt_dt.replace(tzinfo=timezone.utc)
+        else:
+            appt_dt = appt_dt.astimezone(timezone.utc)
+        if appt_dt <= datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="Appointment time must be in the future")
 
         resp = supabase.table("appointments").insert({
@@ -68,7 +68,9 @@ def schedule_appointment(data: AppointmentCreate, background_tasks: BackgroundTa
 
 
 @router.get("/clinic/{clinic_id}")
-def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, current_clinic=Depends(get_current_clinic)):
+def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optional[str] = None, page: int = 1, per_page: int = 50, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
     query = supabase.table("appointments")\
         .select("*, patients(name, phone)")\
@@ -82,7 +84,7 @@ def get_appointments(clinic_id: str, status: Optional[str] = None, date: Optiona
         query = query.gte("appointment_time", f"{date}T00:00:00")\
                      .lte("appointment_time", f"{date}T23:59:59")
 
-    resp = query.execute()
+    resp = query.range((page - 1) * per_page, page * per_page - 1).execute()
     return {"appointments": resp.data, "total": len(resp.data)}
 
 
@@ -100,6 +102,9 @@ def mark_no_show(appointment_id: str, current_clinic=Depends(get_current_clinic)
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     appt_data = appt.data[0]
+    if appt_data["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     patient   = appt_data.get("patients", {})
     clinic    = appt_data.get("clinics", {})
 
@@ -124,6 +129,11 @@ def mark_no_show(appointment_id: str, current_clinic=Depends(get_current_clinic)
 @router.post("/{appointment_id}/complete")
 def complete_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "completed"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment marked as completed"}
 
@@ -131,7 +141,12 @@ def complete_appointment(appointment_id: str, current_clinic=Depends(get_current
 @router.patch("/{appointment_id}")
 def update_appointment(appointment_id: str, data: AppointmentUpdate, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
-    updates = {k: v for k, v in data.dict().items() if v is not None}
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     resp = supabase.table("appointments").update(updates).eq("id", appointment_id).execute()
@@ -141,5 +156,43 @@ def update_appointment(appointment_id: str, data: AppointmentUpdate, current_cli
 @router.delete("/{appointment_id}")
 def cancel_appointment(appointment_id: str, current_clinic=Depends(get_current_clinic)):
     supabase = get_supabase()
+    existing = get_supabase().table("appointments").select("clinic_id").eq("id", appointment_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if existing.data[0]["clinic_id"] != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase.table("appointments").update({"status": "cancelled"}).eq("id", appointment_id).execute()
     return {"success": True, "message": "Appointment cancelled"}
+
+
+@router.get("/logs/{clinic_id}")
+def get_message_logs(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    """Get all WhatsApp message logs for a clinic."""
+    supabase = get_supabase()
+    resp = supabase.table("message_logs")\
+        .select("*, appointments(appointment_time, status, patients(name, phone))")\
+        .eq("appointments.clinic_id", clinic_id)\
+        .order("sent_at", desc=True)\
+        .limit(100)\
+        .execute()
+    return {"logs": resp.data, "total": len(resp.data)}
+
+
+@router.post("/trigger-reminders")
+def trigger_reminders_manually(background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
+    """Manually trigger the reminder job — for testing."""
+    from app.scheduler.reminder_scheduler import check_and_send_reminders
+    
+    background_tasks.add_task(check_and_send_reminders)
+    return {"success": True, "message": "Reminder job triggered in background"}
+
+
+@router.post("/trigger-noshow-check")
+def trigger_noshow_manually(background_tasks: BackgroundTasks, current_clinic=Depends(get_current_clinic)):
+    """Manually trigger no-show detection — for testing."""
+    from app.scheduler.reminder_scheduler import check_and_handle_noshows
+    
+    background_tasks.add_task(check_and_handle_noshows)
+    return {"success": True, "message": "No-show check triggered in background"}

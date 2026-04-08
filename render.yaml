@@ -19,3 +19,9 @@ services:
         sync: false
       - key: APP_ENV
         value: production
+      - key: JWT_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_PLAN_ID
+        sync: false

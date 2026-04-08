@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from app.db.supabase_client import get_supabase
 from app.services.razorpay_service import create_subscription
+from fastapi import Depends
+from app.core.dependencies import get_current_clinic
+
 
 router = APIRouter()
 
@@ -66,6 +69,8 @@ def register_clinic(data: ClinicRegister, background_tasks: BackgroundTasks):
 
 @router.get("/{clinic_id}/dashboard")
 def get_clinic(clinic_id: str, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
     resp = supabase.table("clinics").select("*").eq("id", clinic_id).execute()
     if not resp.data:
@@ -76,11 +81,13 @@ def get_clinic(clinic_id: str, current_clinic=Depends(get_current_clinic)):
 @router.get("/{clinic_id}")
 def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_clinic)):
     """Dashboard stats for the clinic."""
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()
-    today_end   = datetime.utcnow().replace(hour=23, minute=59, second=59).isoformat()
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0).isoformat()
+    today_end   = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
 
     total_patients = supabase.table("patients").select("id", count="exact").eq("clinic_id", clinic_id).execute()
     today_appts    = supabase.table("appointments").select("id, status", count="exact")\
@@ -99,9 +106,11 @@ def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_clinic))
 
 
 @router.patch("/{clinic_id}")
-def update_clinic(clinic_id: str, data: ClinicUpdate):
+def update_clinic(clinic_id: str, data: ClinicUpdate, current_clinic=Depends(get_current_clinic)):
+    if clinic_id != current_clinic["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     supabase = get_supabase()
-    updates = {k: v for k, v in data.dict().items() if v is not None}
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     resp = supabase.table("clinics").update(updates).eq("id", clinic_id).execute()
