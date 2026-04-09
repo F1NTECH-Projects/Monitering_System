@@ -1,12 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from app.core.config import settings
 import secrets
 import string
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def validate_jwt_secret():
     if len(settings.JWT_SECRET) < 64:
@@ -23,10 +21,13 @@ def validate_jwt_secret():
         raise ValueError("JWT_SECRET must include mixed character types")
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password, rounds=12)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     validate_jwt_secret()
