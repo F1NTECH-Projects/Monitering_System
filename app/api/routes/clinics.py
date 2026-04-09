@@ -3,64 +3,11 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 from app.db.supabase_client import get_supabase
-from app.services.razorpay_service import create_subscription
 from app.core.dependencies import get_current_clinic
 from app.core.cache import invalidate_clinic_cache
 
 
 router = APIRouter()
-
-class ClinicRegister(BaseModel):
-    name: str
-    phone: str
-    owner_name: str
-    owner_email: str
-    address: Optional[str] = ""
-
-class ClinicUpdate(BaseModel):
-    name: Optional[str] = None
-    phone: Optional[str] = None
-    owner_name: Optional[str] = None
-    address: Optional[str] = None
-
-@router.post("/register")
-def register_clinic(data: ClinicRegister, background_tasks: BackgroundTasks):
-    supabase = get_supabase()
-    try:
-        resp = supabase.table("clinics").insert({
-            "name": data.name,
-            "phone": data.phone,
-            "owner_name": data.owner_name,
-            "owner_email": data.owner_email,
-            "address": data.address,
-            "is_active": False,
-        }).execute()
-
-        clinic = resp.data[0]
-        
-        def _setup_subscription(clinic_id: str):
-            try:
-                payment = create_subscription(
-                    clinic_name=data.name,
-                    owner_email=data.owner_email,
-                    owner_phone=data.phone,
-                )
-                supabase.table("clinics").update({
-                    "razorpay_subscription_id": payment["subscription_id"],
-                }).eq("id", clinic_id).execute()
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error("Razorpay setup failed: %s", e)
-
-        background_tasks.add_task(_setup_subscription, clinic["id"])
-
-        return {
-            "success": True,
-            "clinic": clinic,
-            "message": "Clinic registered. Payment link will be sent shortly.",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/{clinic_id}/dashboard")
 def get_clinic(clinic_id: str, current_clinic=Depends(get_current_clinic)):

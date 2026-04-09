@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useState } from "react";
 import { useAuth } from "@/stores/authStore";
-import { clinicService } from "@/services/api";
+import { clinicService, appointmentService } from "@/services/api";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
@@ -22,13 +22,7 @@ interface Stats {
   total_no_shows: number;
 }
 
-const RECENT_ACTIVITY = [
-  { id: 1, type: "confirmed", patient: "Arjun Sharma",  time: "2m ago",  icon: CheckCircle2,  color: "#34d399" },
-  { id: 2, type: "reminder",  patient: "Priya Patel",   time: "14m ago", icon: MessageSquare, color: "#818cf8" },
-  { id: 3, type: "no-show",   patient: "Meera Reddy",   time: "1h ago",  icon: AlertTriangle, color: "#fbbf24" },
-  { id: 4, type: "confirmed", patient: "Rahul Verma",   time: "2h ago",  icon: CheckCircle2,  color: "#34d399" },
-  { id: 5, type: "reminder",  patient: "Sneha Gupta",   time: "3h ago",  icon: MessageSquare, color: "#818cf8" },
-];
+
 
 const QUICK_ACTIONS = [
   { label: "New Appointment",  icon: Calendar,  href: "/appointments", color: "#818cf8" },
@@ -243,7 +237,7 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="space-y-1">
-            {RECENT_ACTIVITY.map((item, idx) => (
+            {activity.map((item, idx) => (
               <motion.div key={item.id}
                 className="flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[rgba(99,102,241,0.05)] cursor-pointer"
                 initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.55 + idx * 0.07 }}>

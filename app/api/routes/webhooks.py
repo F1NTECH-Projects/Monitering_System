@@ -13,6 +13,8 @@ MAX_WEBHOOK_BODY_SIZE = 10 * 1024 * 1024
 
 @router.post("/razorpay")
 async def razorpay_webhook(request: Request):
+    if not settings.RAZORPAY_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Webhook not configured")
     try:
         body = await request.body()
         
