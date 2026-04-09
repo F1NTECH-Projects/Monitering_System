@@ -54,6 +54,7 @@ export default function DashboardPage() {
   const [error,     setError]     = useState("");
   const [lastSync,  setLastSync]  = useState<Date | null>(null);
   const [syncing,   setSyncing]   = useState(false);
+  const [activity,  setActivity]  = useState<any[]>([]);
 
   const fetchStats = useCallback(async () => {
     if (!clinic?.id) return;
@@ -61,6 +62,19 @@ export default function DashboardPage() {
     try {
       const r = await clinicService.getStats(clinic.id);
       setStats(r.data);
+      appointmentService.getLogs(clinic.id)
+        .then((r2) => {
+          const logs = r2.data?.logs ?? [];
+          setActivity(logs.slice(0, 5).map((log: any, idx: number) => ({
+            id: log.id ?? idx,
+            type: log.message_type,
+            patient: log.appointments?.patients?.name ?? "Patient",
+            time: new Date(log.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            icon: log.message_type === "reminder" ? MessageSquare : CheckCircle2,
+            color: log.success ? "#34d399" : "#f87171",
+          })));
+        })
+        .catch(() => {});
       setLastSync(new Date());
       setError("");
     } catch {
