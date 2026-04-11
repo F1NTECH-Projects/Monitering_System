@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,https://yourdomain.com"
 
-    # JWT
     JWT_SECRET: str = "change-this-to-a-long-random-secret"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
@@ -27,10 +26,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
-
-
-settings = Settings()
-validate_settings()
 
 
 def validate_settings():
@@ -45,4 +40,5 @@ def validate_settings():
             raise RuntimeError("Wildcard CORS not allowed in production")
 
 
+settings = Settings()
 validate_settings()
