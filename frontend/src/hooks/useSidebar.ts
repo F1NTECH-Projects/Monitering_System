@@ -1,13 +1,16 @@
+"use client";
 import { create } from "zustand";
 
 interface SidebarState {
   isCollapsed: boolean;
   toggle: () => void;
-  setCollapsed: (collapsed: boolean) => void;
+  setCollapsed: (v: boolean) => void;
 }
 
-export const useSidebar = create<SidebarState>((set) => ({
+const useSidebarStore = create<SidebarState>((set) => ({
   isCollapsed: false,
-  toggle: () => set((state) => ({ isCollapsed: !state.isCollapsed })),
-  setCollapsed: (collapsed: boolean) => set({ isCollapsed: collapsed }),
+  toggle: () => set((s) => ({ isCollapsed: !s.isCollapsed })),
+  setCollapsed: (v) => set({ isCollapsed: v }),
 }));
+
+export const useSidebar = useSidebarStore;

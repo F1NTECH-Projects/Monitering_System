@@ -31,6 +31,9 @@ export const authService = {
   me: () => api.get("/auth/me"),
 };
 
+// Alias for backward compat with login page imports
+export const authAPI = authService;
+
 export const clinicService = {
   getStats: (clinicId: string) => api.get(`/clinics/${clinicId}`),
   getDashboard: (clinicId: string) => api.get(`/clinics/${clinicId}/dashboard`),

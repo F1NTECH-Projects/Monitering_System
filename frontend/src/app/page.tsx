@@ -2,19 +2,29 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "@/stores/authStore";
 import { clinicService } from "@/services/api";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
   Users, Calendar, AlertTriangle, MessageSquare, TrendingUp,
   ArrowUpRight, Clock, CheckCircle2, Activity, Zap, ChevronRight,
-  RefreshCw,
+  RefreshCw, Sparkles, LayoutDashboard, ArrowDownRight,
 } from "lucide-react";
 import { useRealtime } from "@/hooks/useRealtime";
+import Link from "next/link";
 
-// Lazy-load charts (they're client-only and large)
-const AppointmentChart = dynamic(() => import("@/components/charts/AppointmentChart"), { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
-const DeliveryChart    = dynamic(() => import("@/components/charts/DeliveryChart"),    { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
-const NoShowChart      = dynamic(() => import("@/components/charts/NoShowChart"),      { ssr: false, loading: () => <div className="shimmer h-[200px] rounded-xl" /> });
+// Lazy-load charts
+const AppointmentChart = dynamic(() => import("@/components/charts/AppointmentChart"), {
+  ssr: false,
+  loading: () => <div className="shimmer h-full w-full rounded-xl min-h-[200px]" />,
+});
+const DeliveryChart = dynamic(() => import("@/components/charts/DeliveryChart"), {
+  ssr: false,
+  loading: () => <div className="shimmer h-full w-full rounded-xl min-h-[200px]" />,
+});
+const NoShowChart = dynamic(() => import("@/components/charts/NoShowChart"), {
+  ssr: false,
+  loading: () => <div className="shimmer w-[180px] h-[180px] rounded-full mx-auto" />,
+});
 
 interface Stats {
   total_patients: number;
@@ -23,23 +33,22 @@ interface Stats {
 }
 
 const RECENT_ACTIVITY = [
-  { id: 1, type: "confirmed", patient: "Arjun Sharma",  time: "2m ago",  icon: CheckCircle2,  color: "#34d399" },
-  { id: 2, type: "reminder",  patient: "Priya Patel",   time: "14m ago", icon: MessageSquare, color: "#818cf8" },
-  { id: 3, type: "no-show",   patient: "Meera Reddy",   time: "1h ago",  icon: AlertTriangle, color: "#fbbf24" },
-  { id: 4, type: "confirmed", patient: "Rahul Verma",   time: "2h ago",  icon: CheckCircle2,  color: "#34d399" },
-  { id: 5, type: "reminder",  patient: "Sneha Gupta",   time: "3h ago",  icon: MessageSquare, color: "#818cf8" },
+  { id: 1, type: "confirmed", patient: "Arjun Sharma",   time: "2m ago",  icon: CheckCircle2,  color: "#34d399",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.15)"  },
+  { id: 2, type: "reminder",  patient: "Priya Patel",    time: "14m ago", icon: MessageSquare, color: "#818cf8",  bg: "rgba(129,140,248,0.08)", border: "rgba(129,140,248,0.15)"  },
+  { id: 3, type: "no-show",   patient: "Meera Reddy",    time: "1h ago",  icon: AlertTriangle, color: "#fbbf24",  bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.15)"  },
+  { id: 4, type: "confirmed", patient: "Rahul Verma",    time: "2h ago",  icon: CheckCircle2,  color: "#34d399",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.15)"  },
+  { id: 5, type: "reminder",  patient: "Sneha Gupta",    time: "3h ago",  icon: MessageSquare, color: "#a78bfa",  bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.15)" },
 ];
 
 const QUICK_ACTIONS = [
-  { label: "New Appointment",  icon: Calendar,  href: "/appointments", color: "#818cf8" },
-  { label: "Add Patient",      icon: Users,     href: "/patients",     color: "#22d3ee" },
-  { label: "Send All Reminders", icon: Zap,     href: "#",             color: "#34d399" },
-  { label: "View Logs",        icon: Activity,  href: "/logs",         color: "#fbbf24" },
+  { label: "New Appointment",  icon: Calendar,     href: "/appointments", color: "#818cf8",  bg: "rgba(99,102,241,0.10)",  border: "rgba(99,102,241,0.20)"  },
+  { label: "Add Patient",      icon: Users,        href: "/patients",     color: "#22d3ee",  bg: "rgba(6,182,212,0.10)",   border: "rgba(6,182,212,0.20)"   },
+  { label: "Send Reminders",   icon: Zap,          href: "#",             color: "#a78bfa",  bg: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.20)" },
+  { label: "View Logs",        icon: Activity,     href: "/logs",         color: "#fbbf24",  bg: "rgba(251,191,36,0.10)", border: "rgba(251,191,36,0.20)"  },
 ];
 
 function CountUp({ target, duration = 900 }: { target: number; duration?: number }) {
   const [count, setCount] = useState(0);
-  // Run once on first render
   const [ran, setRan] = useState(false);
   if (!ran && target > 0) {
     setRan(true);
@@ -54,12 +63,21 @@ function CountUp({ target, duration = 900 }: { target: number; duration?: number
   return <>{count || 0}</>;
 }
 
+const stagger = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { ease: [0.16, 1, 0.3, 1], duration: 0.55 } },
+};
+
 export default function DashboardPage() {
   const clinic = useAuth((s) => s.clinic);
-  const [stats,     setStats]     = useState<Stats | null>(null);
-  const [error,     setError]     = useState("");
-  const [lastSync,  setLastSync]  = useState<Date | null>(null);
-  const [syncing,   setSyncing]   = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchStats = useCallback(async () => {
     if (!clinic?.id) return;
@@ -76,240 +94,369 @@ export default function DashboardPage() {
     }
   }, [clinic?.id]);
 
-  // 30-second real-time polling
   useRealtime(fetchStats, { interval: 30_000 });
 
   const kpis = [
-    { id: "total_patients",     label: "Total Patients",         icon: Users,        color: "#22d3ee", bg: "rgba(6,182,212,0.1)",   border: "rgba(6,182,212,0.2)",   value: stats?.total_patients ?? 0,       trend: "+12%", desc: "vs last month"  },
-    { id: "today_appointments", label: "Today's Appointments",   icon: Calendar,     color: "#818cf8", bg: "rgba(99,102,241,0.1)",  border: "rgba(99,102,241,0.2)",  value: stats?.today_appointments ?? 0,   trend: "+3",   desc: "scheduled today" },
-    { id: "no_shows",           label: "Total No-Shows",         icon: AlertTriangle,color: "#fbbf24", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.2)",  value: stats?.total_no_shows ?? 0,       trend: "-8%",  desc: "all time"        },
-    { id: "messages_sent",      label: "WhatsApp Sent",          icon: MessageSquare,color: "#34d399", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.2)",  value: 94,                               trend: "94%",  desc: "delivery rate"   },
-    { id: "success_rate",       label: "Appointment Rate",       icon: TrendingUp,   color: "#a78bfa", bg: "rgba(167,139,250,0.1)", border: "rgba(167,139,250,0.2)", value: 87,                               trend: "+5%",  desc: "completion rate" },
+    {
+      id: "total_patients",
+      label: "Total Patients",
+      icon: Users,
+      value: stats?.total_patients ?? 0,
+      trend: "+12%",
+      trendUp: true,
+      color: "#22d3ee",
+      bg: "rgba(6,182,212,0.12)",
+      border: "rgba(6,182,212,0.22)",
+    },
+    {
+      id: "today_appointments",
+      label: "Today's Appts",
+      icon: Calendar,
+      value: stats?.today_appointments ?? 0,
+      trend: "+3",
+      trendUp: true,
+      color: "#818cf8",
+      bg: "rgba(99,102,241,0.12)",
+      border: "rgba(99,102,241,0.22)",
+    },
+    {
+      id: "no_shows",
+      label: "No-Shows",
+      icon: AlertTriangle,
+      value: stats?.total_no_shows ?? 0,
+      trend: "-8%",
+      trendUp: false,
+      color: "#fbbf24",
+      bg: "rgba(245,158,11,0.12)",
+      border: "rgba(245,158,11,0.22)",
+    },
+    {
+      id: "messages_sent",
+      label: "WhatsApp Sent",
+      icon: MessageSquare,
+      value: 94,
+      trend: "94%",
+      trendUp: true,
+      color: "#34d399",
+      bg: "rgba(52,211,153,0.12)",
+      border: "rgba(52,211,153,0.22)",
+    },
+    {
+      id: "success_rate",
+      label: "Success Rate",
+      icon: TrendingUp,
+      value: 87,
+      trend: "+5%",
+      trendUp: true,
+      color: "#a78bfa",
+      bg: "rgba(167,139,250,0.12)",
+      border: "rgba(167,139,250,0.22)",
+    },
   ];
 
   return (
-    <div className="page-enter space-y-8">
-      {/* Hero Banner */}
+    <motion.div
+      className="space-y-6 pb-12"
+      variants={stagger}
+      initial="hidden"
+      animate="show"
+    >
+      {/* ═══ HERO BANNER ═══ */}
       <motion.div
-        className="relative overflow-hidden rounded-2xl p-6 lg:p-8"
-        style={{ background: "linear-gradient(135deg, rgba(98,70,234,0.18) 0%, rgba(6,182,212,0.08) 100%)", border: "1px solid rgba(98,70,234,0.25)" }}
-        initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+        variants={fadeUp}
+        className="glass-card relative overflow-hidden"
+        style={{ padding: "2rem 2.5rem" }}
       >
-        <div className="absolute right-0 top-0 w-64 h-64 opacity-10 pointer-events-none"
-          style={{ background: "radial-gradient(circle at 80% 20%, rgba(98,70,234,0.8), transparent 60%)" }} />
+        {/* Decorative gradient blobs */}
+        <div className="absolute top-0 right-0 w-[400px] h-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse at top right, rgba(99,102,241,0.18) 0%, transparent 65%)" }} />
+        <div className="absolute bottom-0 left-1/2 w-[300px] h-[2px] pointer-events-none"
+          style={{ background: "linear-gradient(90deg, transparent, rgba(34,211,238,0.3), transparent)", transform: "translateX(-50%)" }} />
+        <div className="absolute top-0 inset-x-0 h-px"
+          style={{ background: "linear-gradient(90deg, transparent, rgba(129,140,248,0.4), rgba(34,211,238,0.3), transparent)" }} />
 
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Live Dashboard</span>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex-1">
+            {/* Status pill */}
+            <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full"
+              style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.18)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
+                style={{ boxShadow: "0 0 8px rgba(52,211,153,0.9)" }} />
+              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.15em]">System Online</span>
               {lastSync && (
-                <span className="text-[10px] text-[--foreground-muted] hidden sm:inline">
-                  · Last synced {lastSync.toLocaleTimeString()}
+                <span className="text-[9px] text-emerald-500/60 ml-1 hidden sm:inline font-mono">
+                  {lastSync.toLocaleTimeString()}
                 </span>
               )}
             </div>
-            <h2 className="text-2xl lg:text-3xl font-black text-white mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>
-              Good morning, <span className="text-gradient">{clinic?.name ?? "Clinic"}</span> 👋
-            </h2>
-            <p className="text-[--foreground-muted] text-sm">Here&apos;s what&apos;s happening with your clinic today.</p>
+
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black text-white mb-2 leading-tight"
+              style={{ fontFamily: "Outfit, sans-serif" }}>
+              Welcome,{" "}
+              <span className="text-gradient">{clinic?.name ?? "Clinic"}</span>
+            </h1>
+            <p className="text-[var(--fg-muted)] text-sm md:text-base max-w-lg leading-relaxed">
+              Monitor real-time analytics, manage appointments, and engage seamlessly with your patients.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Manual refresh */}
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            {error && (
+              <span className="text-xs text-red-400 bg-red-400/10 px-3 py-1.5 rounded-lg border border-red-400/20">
+                {error}
+              </span>
+            )}
             <motion.button
-              className="btn btn-ghost btn-sm gap-2"
+              className="btn btn-sm gap-2"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#22d3ee" }}
               onClick={fetchStats}
-              whileTap={{ scale: 0.9 }}
-              style={{ color: "#818cf8", border: "1px solid rgba(99,102,241,0.2)" }}
-              title="Refresh stats"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
             >
               <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-              <span className="text-xs hidden sm:inline">{syncing ? "Syncing…" : "Refresh"}</span>
+              <span className="text-xs font-semibold">{syncing ? "Syncing…" : "Sync"}</span>
             </motion.button>
-
-            <div className="text-center px-4 py-3 rounded-xl" style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
-              <div className="text-2xl font-black text-white" style={{ fontFamily: "Outfit, sans-serif" }}>
-                {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
-              </div>
-              <div className="text-[10px] font-bold text-[--foreground-muted] uppercase tracking-widest mt-0.5">
-                {new Date().toLocaleDateString("en-IN", { weekday: "short" })}
-              </div>
-            </div>
+            <motion.button
+              className="btn btn-primary btn-sm gap-2"
+              style={{ boxShadow: "0 0 24px rgba(99,102,241,0.35)" }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <Sparkles size={13} />
+              <span className="text-xs font-semibold">Intelligence</span>
+            </motion.button>
           </div>
         </div>
       </motion.div>
 
-      {/* KPI Grid */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-bold text-[--foreground-muted] uppercase tracking-wider">Key Metrics</h3>
-          {error && <span className="text-xs text-red-400">{error}</span>}
+      {/* ═══ KPI GRID ═══ */}
+      <motion.div variants={stagger}>
+        <div className="flex items-center justify-between mb-4 px-1">
+          <div className="flex items-center gap-2">
+            <LayoutDashboard size={14} style={{ color: "#818cf8" }} />
+            <span className="text-xs font-black text-white uppercase tracking-widest">Core Metrics</span>
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
-          {kpis.map((kpi, idx) => (
-            <motion.div key={kpi.id} className="kpi-card cursor-pointer"
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.07, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              whileHover={{ scale: 1.02 }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
-                style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
-                <kpi.icon size={16} style={{ color: kpi.color }} />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {kpis.map((kpi) => (
+            <motion.div
+              key={kpi.id}
+              variants={fadeUp}
+              whileHover={{ y: -3, scale: 1.01 }}
+              className="glass-card cursor-pointer group"
+              style={{ padding: "1.25rem" }}
+            >
+              {/* Top accent line */}
+              <div className="absolute top-0 inset-x-0 h-[2px] rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: `linear-gradient(90deg, transparent, ${kpi.color}, transparent)` }} />
+
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-2 rounded-xl transition-transform group-hover:scale-110"
+                  style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
+                  <kpi.icon size={16} style={{ color: kpi.color }} />
+                </div>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                  style={{
+                    background: kpi.trendUp ? "rgba(52,211,153,0.08)" : "rgba(239,68,68,0.08)",
+                    border: `1px solid ${kpi.trendUp ? "rgba(52,211,153,0.18)" : "rgba(239,68,68,0.18)"}`,
+                  }}>
+                  {kpi.trendUp
+                    ? <ArrowUpRight size={10} style={{ color: "#34d399" }} />
+                    : <ArrowDownRight size={10} style={{ color: "#f87171" }} />
+                  }
+                  <span className="text-[9px] font-black" style={{ color: kpi.trendUp ? "#34d399" : "#f87171" }}>
+                    {kpi.trend}
+                  </span>
+                </div>
               </div>
-              <div className="text-2xl lg:text-3xl font-black text-white mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>
-                {stats || kpi.id === "messages_sent" || kpi.id === "success_rate"
-                  ? <CountUp target={kpi.value} />
-                  : <div className="shimmer h-7 w-12 rounded-lg mt-1" />
-                }
-              </div>
-              <p className="text-[11px] text-[--foreground-muted] font-medium leading-tight mb-2">{kpi.label}</p>
-              <div className="flex items-center gap-1">
-                <ArrowUpRight size={10} style={{ color: kpi.color }} />
-                <span className="text-[10px] font-bold" style={{ color: kpi.color }}>{kpi.trend}</span>
-                <span className="text-[10px] text-[--foreground-muted] hidden xl:inline">{kpi.desc}</span>
+
+              <div>
+                <h3 className="text-3xl font-black text-white mb-1 leading-none"
+                  style={{ fontFamily: "Outfit, sans-serif" }}>
+                  {stats || kpi.id === "messages_sent" || kpi.id === "success_rate"
+                    ? <CountUp target={kpi.value} />
+                    : <div className="shimmer h-8 w-14 rounded-lg" />
+                  }
+                  {(kpi.id === "messages_sent" || kpi.id === "success_rate") && (
+                    <span className="text-lg ml-0.5">%</span>
+                  )}
+                </h3>
+                <p className="text-[11px] text-[var(--fg-muted)] font-semibold tracking-wide leading-tight">
+                  {kpi.label}
+                </p>
               </div>
             </motion.div>
           ))}
         </div>
-      </div>
+      </motion.div>
 
-      {/* Charts Row */}
-      <div>
-        <h3 className="text-xs font-bold text-[--foreground-muted] uppercase tracking-wider mb-4">Analytics</h3>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ═══ CHARTS ROW ═══ */}
+      <motion.div variants={stagger} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-          {/* Appointment Trend */}
-          <motion.div className="lg:col-span-2 glass-card p-5"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Weekly Appointments</h4>
-                <p className="text-[10px] text-[--foreground-muted] mt-0.5">Scheduled · Completed · No-Show</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {[{ label: "Scheduled", c: "#818cf8" }, { label: "Done", c: "#34d399" }, { label: "No-Show", c: "#fbbf24" }].map(l => (
-                  <div key={l.label} className="hidden sm:flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ background: l.c }} />
-                    <span className="text-[10px] text-[--foreground-muted]">{l.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <AppointmentChart />
-          </motion.div>
-
-          {/* Completion Rate */}
-          <motion.div className="glass-card p-5"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}>
-            <h4 className="font-bold text-white text-sm mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>Completion Rate</h4>
-            <p className="text-[10px] text-[--foreground-muted] mb-2">Appointments attended vs booked</p>
-            <NoShowChart rate={87} />
-          </motion.div>
-
-          {/* Delivery Chart */}
-          <motion.div className="glass-card p-5 lg:col-span-3"
-            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.48 }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>WhatsApp Delivery</h4>
-                <p className="text-[10px] text-[--foreground-muted] mt-0.5">Messages sent vs delivered by week</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {[{ label: "Delivered", c: "#34d399" }, { label: "Failed", c: "#f87171" }].map(l => (
-                  <div key={l.label} className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ background: l.c }} />
-                    <span className="text-[10px] text-[--foreground-muted]">{l.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <DeliveryChart />
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Activity + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Activity Feed */}
-        <motion.div className="lg:col-span-2 glass-card p-5"
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-          <div className="flex items-center justify-between mb-4">
+        {/* Appointment Trends — 2/3 width */}
+        <motion.div variants={fadeUp} className="lg:col-span-2 glass-card flex flex-col" style={{ padding: "1.5rem" }}>
+          <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Recent Activity</h3>
-              <p className="text-[10px] text-[--foreground-muted] mt-0.5">Latest patient interactions</p>
+              <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
+                Appointment Trends
+              </h3>
+              <p className="text-[11px] text-[var(--fg-muted)]">Weekly bookings vs completions</p>
             </div>
-            <button className="btn btn-ghost btn-sm gap-1 text-[color:#818cf8] text-xs">
-              View all <ChevronRight size={13} />
+            <div className="flex gap-1 rounded-lg p-0.5"
+              style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(99,102,241,0.08)" }}>
+              <button className="px-3 py-1.5 text-[11px] font-bold text-white rounded-md"
+                style={{ background: "rgba(99,102,241,0.18)" }}>Week</button>
+              <button className="px-3 py-1.5 text-[11px] font-medium text-[var(--fg-muted)] hover:text-white transition-colors">Month</button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-[240px]">
+            <AppointmentChart />
+          </div>
+        </motion.div>
+
+        {/* Completion Rate Donut — 1/3 width */}
+        <motion.div variants={fadeUp} className="glass-card flex flex-col items-center justify-center relative overflow-hidden"
+          style={{ padding: "1.5rem" }}>
+          {/* Giant watermark icon */}
+          <div className="absolute -right-4 -top-4 opacity-5 pointer-events-none">
+            <TrendingUp size={120} />
+          </div>
+
+          <div className="relative z-10 w-full text-center">
+            <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
+              Completion Rate
+            </h3>
+            <p className="text-[11px] text-[var(--fg-muted)] mb-5">Patient attendance overview</p>
+
+            {/* Ring chart with center label */}
+            <div className="inline-block relative mx-auto">
+              <NoShowChart rate={87} />
+              <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                <span className="text-4xl font-black text-white leading-none" style={{ fontFamily: "Outfit, sans-serif" }}>87%</span>
+                <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest mt-1">Excellent</span>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center justify-center gap-4 mt-4">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: "linear-gradient(135deg, #6246ea, #22d3ee)" }} />
+                <span className="text-[10px] text-[var(--fg-muted)] font-semibold">Completed</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(99,102,241,0.15)" }} />
+                <span className="text-[10px] text-[var(--fg-muted)] font-semibold">No-Show</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Delivery Chart — full width */}
+        <motion.div variants={fadeUp} className="glass-card lg:col-span-3 flex flex-col" style={{ padding: "1.5rem" }}>
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
+                WhatsApp Deliverability
+              </h3>
+              <p className="text-[11px] text-[var(--fg-muted)]">Message delivery success rate over time</p>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+              style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">94.2% avg</span>
+            </div>
+          </div>
+          <div className="h-[180px]">
+            <DeliveryChart />
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* ═══ BOTTOM ROW: Activity Feed + Quick Actions ═══ */}
+      <motion.div variants={stagger} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Live Activity Feed — 2/3 */}
+        <motion.div variants={fadeUp} className="lg:col-span-2 glass-card" style={{ padding: "1.5rem" }}>
+          <div className="flex items-center justify-between mb-5 pb-4 border-b border-[rgba(99,102,241,0.08)]">
+            <div>
+              <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
+                Live Activity
+              </h3>
+              <p className="text-[11px] text-[var(--fg-muted)]">Recent patient notifications</p>
+            </div>
+            <button className="flex items-center gap-1 text-[11px] font-bold text-[#818cf8] hover:text-[#a78bfa] transition-colors">
+              View All <ChevronRight size={13} />
             </button>
           </div>
-          <div className="space-y-1">
-            {RECENT_ACTIVITY.map((item, idx) => (
-              <motion.div key={item.id}
-                className="flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[rgba(99,102,241,0.05)] cursor-pointer"
-                initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.55 + idx * 0.07 }}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${item.color}18`, border: `1px solid ${item.color}28` }}>
-                  <item.icon size={15} style={{ color: item.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{item.patient}</p>
-                  <p className="text-[11px] text-[--foreground-muted] capitalize">{item.type} notification</p>
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-[--foreground-muted] flex-shrink-0">
-                  <Clock size={10} />{item.time}
-                </div>
+
+          <div className="space-y-2.5">
+            <AnimatePresence>
+              {RECENT_ACTIVITY.map((item, idx) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.08 }}
+                  className="flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer group transition-all hover:bg-[rgba(99,102,241,0.04)]"
+                  style={{ background: item.bg, border: `1px solid ${item.border}` }}
+                >
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                    <item.icon size={16} style={{ color: item.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-white group-hover:text-[#a78bfa] transition-colors truncate">
+                      {item.patient}
+                    </h4>
+                    <p className="text-[11px] text-[var(--fg-muted)] capitalize">{item.type} notification sent</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--fg-muted)] font-mono flex-shrink-0 px-2 py-1 rounded-md"
+                    style={{ background: "rgba(0,0,0,0.25)" }}>
+                    <Clock size={10} className="opacity-70" />
+                    {item.time}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        {/* Quick Actions — 1/3 */}
+        <motion.div variants={fadeUp} className="glass-card flex flex-col" style={{ padding: "1.5rem" }}>
+          <div className="mb-5 pb-4 border-b border-[rgba(99,102,241,0.08)]">
+            <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
+              Command Center
+            </h3>
+            <p className="text-[11px] text-[var(--fg-muted)]">Fast access to vital operations</p>
+          </div>
+          <div className="flex-1 space-y-2.5">
+            {QUICK_ACTIONS.map((action, idx) => (
+              <motion.div
+                key={action.label}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.07 }}
+              >
+                <Link href={action.href}>
+                  <div
+                    className="flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer group transition-all"
+                    style={{ background: action.bg, border: `1px solid ${action.border}` }}
+                  >
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${action.color}18`, border: `1px solid ${action.color}28` }}>
+                      <action.icon size={16} style={{ color: action.color }} />
+                    </div>
+                    <span className="text-sm font-bold text-white group-hover:translate-x-1 transition-transform flex-1">
+                      {action.label}
+                    </span>
+                    <ChevronRight size={14} className="text-[var(--fg-muted)] group-hover:text-white transition-colors flex-shrink-0" />
+                  </div>
+                </Link>
               </motion.div>
             ))}
           </div>
         </motion.div>
-
-        {/* Quick Actions + System Status */}
-        <motion.div className="glass-card p-5"
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.57 }}>
-          <div className="mb-4">
-            <h3 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>Quick Actions</h3>
-            <p className="text-[10px] text-[--foreground-muted] mt-0.5">Common tasks at a glance</p>
-          </div>
-          <div className="space-y-2">
-            {QUICK_ACTIONS.map((action, idx) => (
-              <motion.a key={action.label} href={action.href}
-                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all group"
-                style={{ background: `${action.color}0d`, border: `1px solid ${action.color}20` }}
-                whileHover={{ x: 4, background: `${action.color}18` }}
-                initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.62 + idx * 0.07 }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${action.color}1a` }}>
-                  <action.icon size={14} style={{ color: action.color }} />
-                </div>
-                <span className="text-sm font-semibold text-white">{action.label}</span>
-                <ChevronRight size={13} className="ml-auto text-[--foreground-muted] transition-transform group-hover:translate-x-1" />
-              </motion.a>
-            ))}
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-[rgba(99,102,241,0.1)]">
-            <p className="text-[10px] font-bold text-[--foreground-muted] uppercase tracking-wider mb-3">System Status</p>
-            <div className="space-y-2">
-              {[
-                { label: "API Backend",  ok: true  },
-                { label: "WhatsApp API", ok: true  },
-                { label: "Scheduler",    ok: true  },
-              ].map((s) => (
-                <div key={s.label} className="flex items-center justify-between">
-                  <span className="text-xs text-[--foreground-muted]">{s.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full ${s.ok ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
-                    <span className={`text-[10px] font-bold ${s.ok ? "text-emerald-400" : "text-red-400"}`}>
-                      {s.ok ? "Online" : "Offline"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

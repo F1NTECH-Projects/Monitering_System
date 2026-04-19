@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-interface Clinic { id: string; name: string; owner_name: string; is_active: boolean; }
+interface Clinic { id: string; name: string; owner_name: string; is_active: boolean; upi_id?: string; }
 interface AuthState {
   token: string | null;
   clinic: Clinic | null;
@@ -20,3 +20,6 @@ export const useAuth = create<AuthState>()(
     { name: "clinic-auth" }
   )
 );
+
+// Alias for backward compat
+export const useAuthStore = useAuth;

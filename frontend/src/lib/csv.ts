@@ -1,32 +1,35 @@
 /**
- * Converts an array of objects into a CSV string and triggers a download.
- * @param data        Array of row objects
- * @param filename    Downloaded file name (without extension)
- * @param columns     Optional column map: { key: "Display Label" }
+ * Export an array of objects to a downloadable CSV file.
  */
 export function exportCSV<T extends Record<string, unknown>>(
-  data: T[],
+  rows: T[],
   filename: string,
-  columns?: Partial<Record<keyof T, string>>
+  headers?: Partial<Record<keyof T, string>>
 ): void {
-  if (!data.length) return;
+  if (!rows.length) return;
 
-  const keys = columns ? (Object.keys(columns) as (keyof T)[]) : (Object.keys(data[0]) as (keyof T)[]);
-  const headers = keys.map((k) => columns?.[k] ?? String(k));
+  const keys = Object.keys(rows[0]) as (keyof T)[];
+  const headerRow = keys.map((k) => headers?.[k] ?? String(k)).join(",");
+  const dataRows = rows.map((row) =>
+    keys
+      .map((k) => {
+        const val = String(row[k] ?? "");
+        // Escape commas and quotes
+        return val.includes(",") || val.includes('"')
+          ? `"${val.replace(/"/g, '""')}"`
+          : val;
+      })
+      .join(",")
+  );
 
-  const escape = (val: unknown): string => {
-    const str = val == null ? "" : String(val).replace(/"/g, '""');
-    return `"${str}"`;
-  };
-
-  const rows = data.map((row) => keys.map((k) => escape(row[k])).join(","));
-  const csv = [headers.map(escape).join(","), ...rows].join("\r\n");
-
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const csv = [headerRow, ...dataRows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}_${new Date().toISOString().split("T")[0]}.csv`;
-  a.click();
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
