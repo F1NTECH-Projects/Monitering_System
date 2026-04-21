@@ -16,7 +16,6 @@ MAX_BODY = 10 * 1024 * 1024
 async def razorpay_webhook(request: Request):
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Webhook not configured")
-
     body = await request.body()
     if len(body) > MAX_BODY:
         raise HTTPException(status_code=413, detail="Payload too large")
@@ -31,7 +30,6 @@ async def razorpay_webhook(request: Request):
     if not hmac.compare_digest(expected, signature):
         logger.warning("Razorpay: invalid signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
-
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:

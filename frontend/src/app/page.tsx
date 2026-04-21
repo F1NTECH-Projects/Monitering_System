@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useState } from "react";
 import { useAuth } from "@/stores/authStore";
-import { clinicService } from "@/services/api";
+import { clinicService, appointmentService } from "@/services/api";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
@@ -74,10 +74,11 @@ const fadeUp = {
 
 export default function DashboardPage() {
   const clinic = useAuth((s) => s.clinic);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [error, setError] = useState("");
-  const [lastSync, setLastSync] = useState<Date | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const [stats,     setStats]     = useState<Stats | null>(null);
+  const [error,     setError]     = useState("");
+  const [lastSync,  setLastSync]  = useState<Date | null>(null);
+  const [syncing,   setSyncing]   = useState(false);
+  const [activity,  setActivity]  = useState<any[]>([]);
 
   const fetchStats = useCallback(async () => {
     if (!clinic?.id) return;
@@ -85,6 +86,19 @@ export default function DashboardPage() {
     try {
       const r = await clinicService.getStats(clinic.id);
       setStats(r.data);
+      appointmentService.getLogs(clinic.id)
+        .then((r2) => {
+          const logs = r2.data?.logs ?? [];
+          setActivity(logs.slice(0, 5).map((log: any, idx: number) => ({
+            id: log.id ?? idx,
+            type: log.message_type,
+            patient: log.appointments?.patients?.name ?? "Patient",
+            time: new Date(log.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            icon: log.message_type === "reminder" ? MessageSquare : CheckCircle2,
+            color: log.success ? "#34d399" : "#f87171",
+          })));
+        })
+        .catch(() => {});
       setLastSync(new Date());
       setError("");
     } catch {
@@ -388,17 +402,16 @@ export default function DashboardPage() {
               View All <ChevronRight size={13} />
             </button>
           </div>
-
           <div className="space-y-2.5">
             <AnimatePresence>
-              {RECENT_ACTIVITY.map((item, idx) => (
+              {(activity.length > 0 ? activity : RECENT_ACTIVITY).map((item, idx) => (
                 <motion.div
                   key={item.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.08 }}
                   className="flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer group transition-all hover:bg-[rgba(99,102,241,0.04)]"
-                  style={{ background: item.bg, border: `1px solid ${item.border}` }}
+                  style={{ background: item.bg || `rgba(99,102,241,0.08)`, border: `1px solid ${item.border || `rgba(99,102,241,0.15)`}` }}
                 >
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.05)" }}>

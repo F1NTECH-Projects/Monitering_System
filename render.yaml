@@ -64,3 +64,20 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_URL
         sync: false
+
+  - type: worker
+    name: clinic-scheduler
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -c "from app.scheduler.reminder_scheduler import start_scheduler; import time; start_scheduler(); [time.sleep(60) for _ in iter(int, 1)]"
+    envVars:
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: cliniq
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false

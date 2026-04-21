@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # App
     APP_ENV: str = "development"
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000"
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,https://yourdomain.com"
     REMINDER_INTERVAL_HOURS: int = 1
     REMINDER_BEFORE_HOURS: int = 24
     NOSHOW_CHECK_MINUTES: int = 30
@@ -68,4 +68,16 @@ class Settings(BaseSettings):
         return bool(self.WHATSAPP_TOKEN and self.WHATSAPP_PHONE_ID)
 
 
+def validate_settings():
+    if settings.APP_ENV == "production":
+        if settings.JWT_SECRET == "change-this-to-a-64-char-random-secret-minimum-64-characters" or len(settings.JWT_SECRET) < 32:
+            raise RuntimeError("JWT_SECRET must be at least 32 characters and changed in production")
+        if not settings.RAZORPAY_WEBHOOK_SECRET:
+            raise RuntimeError("RAZORPAY_WEBHOOK_SECRET must be set in production")
+        if not settings.RAZORPAY_PLAN_ID:
+            raise RuntimeError("RAZORPAY_PLAN_ID must be set in production")
+        if settings.CORS_ALLOWED_ORIGINS == "*":
+            raise RuntimeError("Wildcard CORS not allowed in production")
+
 settings = Settings()
+validate_settings()

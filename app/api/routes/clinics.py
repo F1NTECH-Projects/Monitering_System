@@ -10,13 +10,13 @@ from app.core.dependencies import get_current_clinic
 
 router = APIRouter()
 
-
 class ClinicUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     owner_name: Optional[str] = None
     upi_id: Optional[str] = None
+
 
 
 @router.get("/{clinic_id}/dashboard")
@@ -34,7 +34,6 @@ async def get_clinic_dashboard(clinic_id: str, current_clinic=Depends(get_curren
 async def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_clinic)):
     if clinic_id != current_clinic["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-
     patients = get_collection("patients")
     appointments = get_collection("appointments")
     now = datetime.now(timezone.utc)
@@ -52,7 +51,6 @@ async def get_clinic_stats(clinic_id: str, current_clinic=Depends(get_current_cl
     }).limit(100)
     today_docs = await today_docs_cursor.to_list(100)
     noshows = await appointments.count_documents({"clinic_id": clinic_id, "status": "no_show"})
-
     return {
         "total_patients": total_patients,
         "today_appointments": today_appts,
@@ -70,7 +68,6 @@ async def update_clinic(clinic_id: str, data: ClinicUpdate, current_clinic=Depen
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-
     updates["updated_at"] = datetime.now(timezone.utc)
     await clinics.update_one({"_id": ObjectId(clinic_id)}, {"$set": updates})
     updated = await clinics.find_one({"_id": ObjectId(clinic_id)}, {"password_hash": 0})
