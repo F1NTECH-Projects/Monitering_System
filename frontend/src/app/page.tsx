@@ -2,6 +2,7 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "@/stores/authStore";
 import { clinicService, appointmentService } from "@/services/api";
+import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
@@ -26,19 +27,21 @@ const NoShowChart = dynamic(() => import("@/components/charts/NoShowChart"), {
   loading: () => <div className="shimmer w-[180px] h-[180px] rounded-full mx-auto" />,
 });
 
-interface Stats {
+interface ClinicStats {
   total_patients: number;
   today_appointments: number;
   total_no_shows: number;
 }
 
-const RECENT_ACTIVITY = [
-  { id: 1, type: "confirmed", patient: "Arjun Sharma",   time: "2m ago",  icon: CheckCircle2,  color: "#34d399",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.15)"  },
-  { id: 2, type: "reminder",  patient: "Priya Patel",    time: "14m ago", icon: MessageSquare, color: "#818cf8",  bg: "rgba(129,140,248,0.08)", border: "rgba(129,140,248,0.15)"  },
-  { id: 3, type: "no-show",   patient: "Meera Reddy",    time: "1h ago",  icon: AlertTriangle, color: "#fbbf24",  bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.15)"  },
-  { id: 4, type: "confirmed", patient: "Rahul Verma",    time: "2h ago",  icon: CheckCircle2,  color: "#34d399",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.15)"  },
-  { id: 5, type: "reminder",  patient: "Sneha Gupta",    time: "3h ago",  icon: MessageSquare, color: "#a78bfa",  bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.15)" },
-];
+interface AnalyticsOverview {
+  total_patients: number;
+  today_appointments: number;
+  month_appointments: number;
+  completion_rate: number;
+  total_no_shows: number;
+  messages_sent: number;
+  delivery_rate: number;
+}
 
 const QUICK_ACTIONS = [
   { label: "New Appointment",  icon: Calendar,     href: "/appointments", color: "#818cf8",  bg: "rgba(99,102,241,0.10)",  border: "rgba(99,102,241,0.20)"  },
@@ -74,31 +77,54 @@ const fadeUp = {
 
 export default function DashboardPage() {
   const clinic = useAuth((s) => s.clinic);
-  const [stats,     setStats]     = useState<Stats | null>(null);
+  const token  = useAuth((s) => s.token);
+
+  const [stats,     setStats]     = useState<ClinicStats | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsOverview | null>(null);
   const [error,     setError]     = useState("");
   const [lastSync,  setLastSync]  = useState<Date | null>(null);
   const [syncing,   setSyncing]   = useState(false);
   const [activity,  setActivity]  = useState<any[]>([]);
 
   const fetchStats = useCallback(async () => {
-    if (!clinic?.id) return;
+    if (!clinic?.id || !token) return;
     setSyncing(true);
     try {
-      const r = await clinicService.getStats(clinic.id);
-      setStats(r.data);
-      appointmentService.getLogs(clinic.id)
-        .then((r2) => {
-          const logs = r2.data?.logs ?? [];
-          setActivity(logs.slice(0, 5).map((log: any, idx: number) => ({
+      const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+      // Fetch clinic stats (today's appointments, total patients, no-shows)
+      const statsRes = await clinicService.getStats(clinic.id);
+      setStats(statsRes.data);
+
+      // Fetch analytics overview (messages sent, delivery rate, completion rate)
+      const analyticsRes = await axios.get(
+        `${url}/analytics/clinic/${clinic.id}/overview`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setAnalytics(analyticsRes.data);
+
+      // Fetch recent message logs for activity feed
+      try {
+        const logsRes = await appointmentService.getLogs(clinic.id);
+        const logs = logsRes.data?.logs ?? [];
+        setActivity(
+          logs.slice(0, 5).map((log: any, idx: number) => ({
             id: log.id ?? idx,
-            type: log.message_type,
-            patient: log.appointments?.patients?.name ?? "Patient",
-            time: new Date(log.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            type: log.message_type ?? "reminder",
+            patient: log.patient_phone ?? "Patient",
+            time: log.sent_at
+              ? new Date(log.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "—",
             icon: log.message_type === "reminder" ? MessageSquare : CheckCircle2,
             color: log.success ? "#34d399" : "#f87171",
-          })));
-        })
-        .catch(() => {});
+            bg: log.success ? "rgba(52,211,153,0.08)" : "rgba(239,68,68,0.08)",
+            border: log.success ? "rgba(52,211,153,0.15)" : "rgba(239,68,68,0.15)",
+          }))
+        );
+      } catch {
+        // logs fetch is non-critical
+      }
+
       setLastSync(new Date());
       setError("");
     } catch {
@@ -106,67 +132,67 @@ export default function DashboardPage() {
     } finally {
       setSyncing(false);
     }
-  }, [clinic?.id]);
+  }, [clinic?.id, token]);
 
   useRealtime(fetchStats, { interval: 30_000 });
 
+  // Build KPIs from real data
   const kpis = [
     {
       id: "total_patients",
       label: "Total Patients",
       icon: Users,
-      value: stats?.total_patients ?? 0,
-      trend: "+12%",
-      trendUp: true,
+      value: analytics?.total_patients ?? stats?.total_patients ?? 0,
       color: "#22d3ee",
       bg: "rgba(6,182,212,0.12)",
       border: "rgba(6,182,212,0.22)",
+      isLoaded: !!(analytics || stats),
     },
     {
       id: "today_appointments",
       label: "Today's Appts",
       icon: Calendar,
-      value: stats?.today_appointments ?? 0,
-      trend: "+3",
-      trendUp: true,
+      value: analytics?.today_appointments ?? stats?.today_appointments ?? 0,
       color: "#818cf8",
       bg: "rgba(99,102,241,0.12)",
       border: "rgba(99,102,241,0.22)",
+      isLoaded: !!(analytics || stats),
     },
     {
       id: "no_shows",
       label: "No-Shows",
       icon: AlertTriangle,
-      value: stats?.total_no_shows ?? 0,
-      trend: "-8%",
-      trendUp: false,
+      value: analytics?.total_no_shows ?? stats?.total_no_shows ?? 0,
       color: "#fbbf24",
       bg: "rgba(245,158,11,0.12)",
       border: "rgba(245,158,11,0.22)",
+      isLoaded: !!(analytics || stats),
     },
     {
       id: "messages_sent",
-      label: "WhatsApp Sent",
+      label: "Messages Sent",
       icon: MessageSquare,
-      value: 94,
-      trend: "94%",
-      trendUp: true,
+      value: analytics?.messages_sent ?? 0,
       color: "#34d399",
       bg: "rgba(52,211,153,0.12)",
       border: "rgba(52,211,153,0.22)",
+      isLoaded: !!analytics,
     },
     {
-      id: "success_rate",
-      label: "Success Rate",
+      id: "delivery_rate",
+      label: "Delivery Rate",
       icon: TrendingUp,
-      value: 87,
-      trend: "+5%",
-      trendUp: true,
+      value: analytics?.delivery_rate ?? 0,
+      suffix: "%",
       color: "#a78bfa",
       bg: "rgba(167,139,250,0.12)",
       border: "rgba(167,139,250,0.22)",
+      isLoaded: !!analytics,
     },
   ];
+
+  // Completion rate for the donut chart — from real analytics
+  const completionRate = analytics?.completion_rate ?? 0;
 
   return (
     <motion.div
@@ -181,17 +207,13 @@ export default function DashboardPage() {
         className="glass-card relative overflow-hidden"
         style={{ padding: "2rem 2.5rem" }}
       >
-        {/* Decorative gradient blobs */}
         <div className="absolute top-0 right-0 w-[400px] h-full pointer-events-none"
           style={{ background: "radial-gradient(ellipse at top right, rgba(99,102,241,0.18) 0%, transparent 65%)" }} />
-        <div className="absolute bottom-0 left-1/2 w-[300px] h-[2px] pointer-events-none"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(34,211,238,0.3), transparent)", transform: "translateX(-50%)" }} />
         <div className="absolute top-0 inset-x-0 h-px"
           style={{ background: "linear-gradient(90deg, transparent, rgba(129,140,248,0.4), rgba(34,211,238,0.3), transparent)" }} />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex-1">
-            {/* Status pill */}
             <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full"
               style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.18)" }}>
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
@@ -260,7 +282,6 @@ export default function DashboardPage() {
               className="glass-card cursor-pointer group"
               style={{ padding: "1.25rem" }}
             >
-              {/* Top accent line */}
               <div className="absolute top-0 inset-x-0 h-[2px] rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ background: `linear-gradient(90deg, transparent, ${kpi.color}, transparent)` }} />
 
@@ -269,30 +290,18 @@ export default function DashboardPage() {
                   style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
                   <kpi.icon size={16} style={{ color: kpi.color }} />
                 </div>
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: kpi.trendUp ? "rgba(52,211,153,0.08)" : "rgba(239,68,68,0.08)",
-                    border: `1px solid ${kpi.trendUp ? "rgba(52,211,153,0.18)" : "rgba(239,68,68,0.18)"}`,
-                  }}>
-                  {kpi.trendUp
-                    ? <ArrowUpRight size={10} style={{ color: "#34d399" }} />
-                    : <ArrowDownRight size={10} style={{ color: "#f87171" }} />
-                  }
-                  <span className="text-[9px] font-black" style={{ color: kpi.trendUp ? "#34d399" : "#f87171" }}>
-                    {kpi.trend}
-                  </span>
-                </div>
               </div>
 
               <div>
                 <h3 className="text-3xl font-black text-white mb-1 leading-none"
                   style={{ fontFamily: "Outfit, sans-serif" }}>
-                  {stats || kpi.id === "messages_sent" || kpi.id === "success_rate"
-                    ? <CountUp target={kpi.value} />
-                    : <div className="shimmer h-8 w-14 rounded-lg" />
-                  }
-                  {(kpi.id === "messages_sent" || kpi.id === "success_rate") && (
-                    <span className="text-lg ml-0.5">%</span>
+                  {kpi.isLoaded ? (
+                    <>
+                      <CountUp target={kpi.value} />
+                      {(kpi as any).suffix && <span className="text-lg ml-0.5">{(kpi as any).suffix}</span>}
+                    </>
+                  ) : (
+                    <div className="shimmer h-8 w-14 rounded-lg" />
                   )}
                 </h3>
                 <p className="text-[11px] text-[var(--fg-muted)] font-semibold tracking-wide leading-tight">
@@ -307,20 +316,14 @@ export default function DashboardPage() {
       {/* ═══ CHARTS ROW ═══ */}
       <motion.div variants={stagger} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Appointment Trends — 2/3 width */}
+        {/* Appointment Trends */}
         <motion.div variants={fadeUp} className="lg:col-span-2 glass-card flex flex-col" style={{ padding: "1.5rem" }}>
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
                 Appointment Trends
               </h3>
-              <p className="text-[11px] text-[var(--fg-muted)]">Weekly bookings vs completions</p>
-            </div>
-            <div className="flex gap-1 rounded-lg p-0.5"
-              style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(99,102,241,0.08)" }}>
-              <button className="px-3 py-1.5 text-[11px] font-bold text-white rounded-md"
-                style={{ background: "rgba(99,102,241,0.18)" }}>Week</button>
-              <button className="px-3 py-1.5 text-[11px] font-medium text-[var(--fg-muted)] hover:text-white transition-colors">Month</button>
+              <p className="text-[11px] text-[var(--fg-muted)]">Last 7 days from MongoDB</p>
             </div>
           </div>
           <div className="flex-1 min-h-[240px]">
@@ -328,30 +331,34 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Completion Rate Donut — 1/3 width */}
+        {/* Completion Rate Donut — real data */}
         <motion.div variants={fadeUp} className="glass-card flex flex-col items-center justify-center relative overflow-hidden"
           style={{ padding: "1.5rem" }}>
-          {/* Giant watermark icon */}
-          <div className="absolute -right-4 -top-4 opacity-5 pointer-events-none">
-            <TrendingUp size={120} />
-          </div>
-
           <div className="relative z-10 w-full text-center">
             <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
               Completion Rate
             </h3>
-            <p className="text-[11px] text-[var(--fg-muted)] mb-5">Patient attendance overview</p>
+            <p className="text-[11px] text-[var(--fg-muted)] mb-5">This month's attendance</p>
 
-            {/* Ring chart with center label */}
             <div className="inline-block relative mx-auto">
-              <NoShowChart rate={87} />
+              <NoShowChart rate={completionRate} />
               <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-                <span className="text-4xl font-black text-white leading-none" style={{ fontFamily: "Outfit, sans-serif" }}>87%</span>
-                <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest mt-1">Excellent</span>
+                {analytics ? (
+                  <>
+                    <span className="text-4xl font-black text-white leading-none" style={{ fontFamily: "Outfit, sans-serif" }}>
+                      {completionRate}%
+                    </span>
+                    <span className="text-[9px] font-black uppercase tracking-widest mt-1"
+                      style={{ color: completionRate >= 80 ? "#34d399" : completionRate >= 60 ? "#fbbf24" : "#f87171" }}>
+                      {completionRate >= 80 ? "Excellent" : completionRate >= 60 ? "Good" : "Needs Work"}
+                    </span>
+                  </>
+                ) : (
+                  <div className="shimmer h-10 w-16 rounded-lg" />
+                )}
               </div>
             </div>
 
-            {/* Legend */}
             <div className="flex items-center justify-center gap-4 mt-4">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full" style={{ background: "linear-gradient(135deg, #6246ea, #22d3ee)" }} />
@@ -365,20 +372,24 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Delivery Chart — full width */}
+        {/* Delivery Chart */}
         <motion.div variants={fadeUp} className="glass-card lg:col-span-3 flex flex-col" style={{ padding: "1.5rem" }}>
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
                 WhatsApp Deliverability
               </h3>
-              <p className="text-[11px] text-[var(--fg-muted)]">Message delivery success rate over time</p>
+              <p className="text-[11px] text-[var(--fg-muted)]">Weekly delivery success from MongoDB</p>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-              style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)" }}>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">94.2% avg</span>
-            </div>
+            {analytics && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)" }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">
+                  {analytics.delivery_rate}% avg
+                </span>
+              </div>
+            )}
           </div>
           <div className="h-[180px]">
             <DeliveryChart />
@@ -389,52 +400,58 @@ export default function DashboardPage() {
       {/* ═══ BOTTOM ROW: Activity Feed + Quick Actions ═══ */}
       <motion.div variants={stagger} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Live Activity Feed — 2/3 */}
+        {/* Live Activity Feed */}
         <motion.div variants={fadeUp} className="lg:col-span-2 glass-card" style={{ padding: "1.5rem" }}>
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-[rgba(99,102,241,0.08)]">
             <div>
               <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
-                Live Activity
+                Recent Messages
               </h3>
-              <p className="text-[11px] text-[var(--fg-muted)]">Recent patient notifications</p>
+              <p className="text-[11px] text-[var(--fg-muted)]">Latest notifications sent to patients</p>
             </div>
-            <button className="flex items-center gap-1 text-[11px] font-bold text-[#818cf8] hover:text-[#a78bfa] transition-colors">
+            <Link href="/logs" className="flex items-center gap-1 text-[11px] font-bold text-[#818cf8] hover:text-[#a78bfa] transition-colors">
               View All <ChevronRight size={13} />
-            </button>
+            </Link>
           </div>
           <div className="space-y-2.5">
-            <AnimatePresence>
-              {(activity.length > 0 ? activity : RECENT_ACTIVITY).map((item, idx) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.08 }}
-                  className="flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer group transition-all hover:bg-[rgba(99,102,241,0.04)]"
-                  style={{ background: item.bg || `rgba(99,102,241,0.08)`, border: `1px solid ${item.border || `rgba(99,102,241,0.15)`}` }}
-                >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                    <item.icon size={16} style={{ color: item.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-white group-hover:text-[#a78bfa] transition-colors truncate">
-                      {item.patient}
-                    </h4>
-                    <p className="text-[11px] text-[var(--fg-muted)] capitalize">{item.type} notification sent</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--fg-muted)] font-mono flex-shrink-0 px-2 py-1 rounded-md"
-                    style={{ background: "rgba(0,0,0,0.25)" }}>
-                    <Clock size={10} className="opacity-70" />
-                    {item.time}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+            {activity.length === 0 ? (
+              <div className="text-center py-8 text-[var(--fg-muted)] text-sm">
+                {syncing ? "Loading..." : "No messages sent yet. Trigger a reminder to see activity here."}
+              </div>
+            ) : (
+              <AnimatePresence>
+                {activity.map((item, idx) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.08 }}
+                    className="flex items-center gap-3.5 p-3.5 rounded-xl group transition-all"
+                    style={{ background: item.bg, border: `1px solid ${item.border}` }}
+                  >
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <item.icon size={16} style={{ color: item.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-bold text-white truncate font-mono">{item.patient}</h4>
+                      <p className="text-[11px] text-[var(--fg-muted)] capitalize">
+                        {item.type?.replace(/_/g, " ")} sent
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-[var(--fg-muted)] font-mono flex-shrink-0 px-2 py-1 rounded-md"
+                      style={{ background: "rgba(0,0,0,0.25)" }}>
+                      <Clock size={10} className="opacity-70" />
+                      {item.time}
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
           </div>
         </motion.div>
 
-        {/* Quick Actions — 1/3 */}
+        {/* Quick Actions */}
         <motion.div variants={fadeUp} className="glass-card flex flex-col" style={{ padding: "1.5rem" }}>
           <div className="mb-5 pb-4 border-b border-[rgba(99,102,241,0.08)]">
             <h3 className="font-black text-base text-white mb-0.5" style={{ fontFamily: "Outfit, sans-serif" }}>
