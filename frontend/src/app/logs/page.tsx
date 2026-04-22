@@ -118,7 +118,7 @@ export default function LogsPage() {
             placeholder="Search by patient or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="input-field pl-10"
+            className="input-premium pl-10"
           />
         </div>
         <div className="flex gap-2 flex-wrap">

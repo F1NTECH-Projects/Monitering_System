@@ -2,27 +2,19 @@
 
 import {
   Calendar, ChevronLeft, ChevronRight, Plus, Clock,
-  CheckCircle2, XCircle, AlertCircle, MoreVertical,
-  Phone, MessageSquare, Search, Filter, TrendingDown,
+  CheckCircle2, XCircle, AlertCircle, Phone, MessageSquare, Search, Video
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios";
+import { useAuth } from "@/stores/authStore";
+import PatientChat from "@/components/chat/PatientChat";
 
-const APPOINTMENTS = [
-  { id: 1, patient: "Arjun Sharma",     time: "09:00 AM", status: "completed", type: "First Visit",   duration: "30 min" },
-  { id: 2, patient: "Priya Patel",      time: "10:15 AM", status: "completed", type: "Consultation",  duration: "45 min" },
-  { id: 3, patient: "Rahul Verma",      time: "11:30 AM", status: "scheduled", type: "Follow-up",     duration: "15 min" },
-  { id: 4, patient: "Sneha Gupta",      time: "12:45 PM", status: "scheduled", type: "Check-up",      duration: "30 min" },
-  { id: 5, patient: "Amit Singh",       time: "02:00 PM", status: "scheduled", type: "Procedure",     duration: "60 min" },
-  { id: 6, patient: "Meera Reddy",      time: "03:30 PM", status: "no-show",   type: "Follow-up",     duration: "15 min" },
-  { id: 7, patient: "Vikram Malhotra",  time: "04:15 PM", status: "cancelled", type: "Consultation",  duration: "30 min" },
-];
-
-const STATUS = {
-  scheduled: { label: "Scheduled", icon: Clock,         cls: "badge-scheduled" },
-  completed:  { label: "Completed", icon: CheckCircle2,  cls: "badge-completed" },
-  "no-show":  { label: "No-Show",   icon: AlertCircle,   cls: "badge-noshow"    },
-  cancelled:  { label: "Cancelled", icon: XCircle,       cls: "badge-cancelled" },
+const STATUS_META: Record<string, { label: string; icon: any; color: string; bg: string; border: string; badgeCls: string }> = {
+  scheduled: { label: "Scheduled", icon: Clock,        color: "#818cf8", bg: "rgba(99,102,241,0.08)",  border: "rgba(99,102,241,0.20)",  badgeCls: "badge-scheduled" },
+  completed:  { label: "Completed", icon: CheckCircle2, color: "#34d399", bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.20)",  badgeCls: "badge-completed" },
+  "no_show":  { label: "No-Show",   icon: AlertCircle,  color: "#fbbf24", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.20)",  badgeCls: "badge-noshow"   },
+  cancelled:  { label: "Cancelled", icon: XCircle,      color: "#f87171", bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.20)",   badgeCls: "badge-cancelled"},
 };
 
 function addDays(d: Date, n: number) {
@@ -32,220 +24,292 @@ function addDays(d: Date, n: number) {
 }
 
 export default function AppointmentsPage() {
+  const { clinic, token } = useAuth();
   const [baseDate, setBaseDate] = useState(new Date());
+  const [activeTab, setActiveTab] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [openChatFor, setOpenChatFor] = useState<string | null>(null);
+
+  // New Appointment Modal State
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [newAppt, setNewAppt] = useState({
+      patient_id: "6612ae0d08a5b2a0c4f8b0p0", // In reality this would be selected from a list of patients, mocking a patient ID for demo
+      appointment_time: "",
+      notes: "",
+      consultation_type: "offline",
+      payment_mode: "offline"
+  });
+
+  const fetchAppointments = async () => {
+      if (!clinic || !token) return;
+      try {
+          const dateStr = baseDate.toISOString().split("T")[0];
+          const res = await axios.get(`http://localhost:8000/api/v1/appointments/clinic/${clinic.id}?date=${dateStr}`, {
+              headers: { Authorization: `Bearer ${token}` }
+          });
+          setAppointments(res.data.appointments);
+      } catch (e) {
+          console.error("Failed to fetch appointments", e);
+      }
+  };
+
+  useEffect(() => {
+      fetchAppointments();
+      // Mock patient ID to avoid errors on submit if patients DB is not synced for UI yet
+      // Ideally we should have a searchable patient list.
+  }, [baseDate, clinic, token]);
+
+  const handleScheduleAppt = async (e: React.FormEvent) => {
+      e.preventDefault();
+      try {
+          let timeVal = new Date(newAppt.appointment_time);
+          await axios.post(`http://localhost:8000/api/v1/appointments/schedule`, 
+            {
+               patient_id: "6612ae0d08a5b2a0c4f8b0p0", // We need a valid BSON object id. We'll use a dummy or skip patient validation
+               appointment_time: timeVal.toISOString(),
+               notes: newAppt.notes,
+               consultation_type: newAppt.consultation_type,
+               payment_mode: newAppt.payment_mode
+            }, 
+            { headers: { Authorization: `Bearer ${token}` }}
+          );
+          setShowScheduleModal(false);
+          fetchAppointments();
+      } catch (e: any) {
+          alert("Could not schedule: Check if the patient ID exists in DB.");
+      }
+  };
+
+  const markStatus = async (id: string, statusEndpoint: string) => {
+      try {
+          await axios.post(`http://localhost:8000/api/v1/appointments/${id}/${statusEndpoint}`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+          });
+          fetchAppointments();
+      } catch (e) {
+          console.error(e);
+      }
+  };
 
   const dateStr = baseDate.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
   const dayStr  = baseDate.toLocaleDateString("en-IN", { weekday: "long" });
+  const isToday = new Date().toDateString() === baseDate.toDateString();
 
-  const scheduled  = APPOINTMENTS.filter((a) => a.status === "scheduled").length;
-  const completed  = APPOINTMENTS.filter((a) => a.status === "completed").length;
-  const noShows    = APPOINTMENTS.filter((a) => a.status === "no-show").length;
-  const cancelled  = APPOINTMENTS.filter((a) => a.status === "cancelled").length;
+  const scheduled = appointments.filter((a) => a.status === "scheduled").length;
+  const completed  = appointments.filter((a) => a.status === "completed").length;
+  const noShows    = appointments.filter((a) => a.status === "no_show").length;
+  const cancelled  = appointments.filter((a) => a.status === "cancelled").length;
+
+  const displayedAppts = appointments
+    .filter((a) => activeTab === "All" || a.status.toLowerCase() === activeTab.toLowerCase())
+    .filter((a) => !searchQuery || a.patient_name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const TABS = [
+    { label: "All",        count: appointments.length, color: "#818cf8" },
+    { label: "Scheduled",  count: scheduled,            color: "#818cf8" },
+    { label: "Completed",  count: completed,            color: "#34d399" },
+    { label: "No_Show",    count: noShows,              color: "#fbbf24" },
+    { label: "Cancelled",  count: cancelled,            color: "#f87171" },
+  ];
 
   return (
-    <div className="page-enter space-y-7 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="page-enter space-y-6 pb-10 relative">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Calendar size={16} style={{ color: "#818cf8" }} />
-            <span className="text-xs font-bold uppercase tracking-widest text-[--foreground-muted]">
-              Daily Schedule
-            </span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <Calendar size={13} style={{ color: "#818cf8" }} />
+            <span className="text-[10px] font-black text-[var(--fg-muted)] uppercase tracking-[0.15em]">Daily Schedule</span>
           </div>
-          <h2 className="text-3xl font-black text-white" style={{ fontFamily: "Outfit, sans-serif" }}>
+          <h2 className="text-2xl lg:text-3xl font-black text-white leading-tight" style={{ fontFamily: "Outfit, sans-serif" }}>
             Appointments
           </h2>
-          <p className="text-[--foreground-muted] text-sm mt-1">
-            Track, manage and update patient visits.
-          </p>
+          <p className="text-[var(--fg-muted)] text-sm mt-1">Track, manage and update patient visits.</p>
         </div>
-
         <motion.button
+          onClick={() => setShowScheduleModal(true)}
           className="btn btn-primary gap-2 flex-shrink-0"
-          whileHover={{ scale: 1.03, boxShadow: "0 8px 28px rgba(98,70,234,0.55)" }}
+          style={{ boxShadow: "0 8px 28px rgba(98,70,234,0.45)" }}
+          whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
         >
-          <Plus size={16} />
-          Schedule Appointment
+          <Plus size={15} /> Schedule Appointment
         </motion.button>
       </div>
 
-      {/* Date Navigator + Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Date selector */}
-        <div
-          className="lg:col-span-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-        >
+        <div className="lg:col-span-3 glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4">
           <div className="flex items-center gap-3">
-            <motion.button
-              className="btn btn-outline btn-icon flex-shrink-0"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setBaseDate(addDays(baseDate, -1))}
-            >
-              <ChevronLeft size={16} />
+            <motion.button className="btn btn-outline btn-icon flex-shrink-0" onClick={() => setBaseDate(addDays(baseDate, -1))}>
+              <ChevronLeft size={15} />
             </motion.button>
-            <div className="text-center min-w-[180px]">
-              <div className="font-bold text-white text-base" style={{ fontFamily: "Outfit, sans-serif" }}>
-                {dateStr}
+            <div className="text-center min-w-[170px]">
+              <div className="font-black text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>{dateStr}</div>
+              <div className="text-[11px] text-[var(--fg-muted)] flex items-center justify-center gap-1.5 mt-0.5">
+                {dayStr}
+                {isToday && (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.22)" }}>
+                    TODAY
+                  </span>
+                )}
               </div>
-              <div className="text-xs text-[--foreground-muted]">{dayStr}</div>
             </div>
-            <motion.button
-              className="btn btn-outline btn-icon flex-shrink-0"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setBaseDate(addDays(baseDate, 1))}
-            >
-              <ChevronRight size={16} />
+            <motion.button className="btn btn-outline btn-icon flex-shrink-0" onClick={() => setBaseDate(addDays(baseDate, 1))}>
+              <ChevronRight size={15} />
             </motion.button>
-            <button
-              className="btn btn-ghost btn-sm text-xs"
-              style={{ color: "#818cf8" }}
-              onClick={() => setBaseDate(new Date())}
-            >
-              Today
-            </button>
           </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--foreground-muted] pointer-events-none" />
-              <input placeholder="Patient name..." className="input-field pl-8 h-9 text-xs w-44" />
-            </div>
-            <button className="btn btn-outline btn-sm gap-1.5">
-              <Filter size={13} />
-              Filter
-            </button>
+          <div className="relative border border-[rgba(255,255,255,0.05)] rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-1.5">
+            <input
+              placeholder="Search patients..."
+              className="bg-transparent text-sm text-white w-full h-8 outline-none placeholder-[var(--fg-muted)]"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
         </div>
 
-        {/* Summary Card */}
-        <div
-          className="flex flex-col justify-center p-4 rounded-2xl text-center"
-          style={{ background: "linear-gradient(135deg, rgba(98,70,234,0.2), rgba(124,58,237,0.15))", border: "1px solid rgba(98,70,234,0.3)" }}
-        >
-          <div className="text-[10px] font-bold uppercase tracking-widest text-[--foreground-muted] mb-1">Today&apos;s Total</div>
-          <div className="text-5xl font-black text-white mb-1" style={{ fontFamily: "Outfit, sans-serif" }}>
-            {APPOINTMENTS.length.toString().padStart(2, "0")}
-          </div>
-          <div className="text-[10px] text-[--foreground-muted] font-medium">appointments</div>
-          <div className="flex justify-center gap-3 mt-3 flex-wrap">
-            <span className="text-[10px] font-bold text-emerald-400">{completed} done</span>
-            <span className="text-[10px] font-bold text-[color:#818cf8]">{scheduled} pending</span>
-            <span className="text-[10px] font-bold text-amber-400">{noShows} no-show</span>
+        <div className="flex flex-col justify-center p-4 rounded-2xl text-center relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, rgba(98,70,234,0.18), rgba(124,58,237,0.12))", border: "1px solid rgba(98,70,234,0.25)" }}>
+          <div className="relative z-10">
+            <div className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--fg-muted)] mb-1.5">
+              {isToday ? "Today's Total" : "Selected Day"}
+            </div>
+            <div className="text-5xl font-black text-white mb-1 leading-none" style={{ fontFamily: "Outfit, sans-serif" }}>
+              {appointments.length.toString().padStart(2, "0")}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Status tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        {[
-          { label: "All",       count: APPOINTMENTS.length, color: "#818cf8" },
-          { label: "Scheduled", count: scheduled,     color: "#818cf8" },
-          { label: "Completed", count: completed,     color: "#34d399" },
-          { label: "No-Show",   count: noShows,       color: "#fbbf24" },
-          { label: "Cancelled", count: cancelled,     color: "#f87171" },
-        ].map((tab, i) => (
+      {/* Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-wrap">
+        {TABS.map((tab) => (
           <button
             key={tab.label}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              i === 0 ? "text-white" : "text-[--foreground-muted] hover:text-white"
-            }`}
+            onClick={() => setActiveTab(tab.label)}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all"
             style={
-              i === 0
-                ? { background: `${tab.color}20`, border: `1px solid ${tab.color}40`, color: tab.color }
-                : { border: "1px solid transparent" }
+              activeTab === tab.label
+                ? { background: `${tab.color}18`, border: `1px solid ${tab.color}35`, color: tab.color }
+                : { color: "var(--fg-muted)", border: "1px solid transparent" }
             }
           >
             {tab.label}
-            <span
-              className="px-1.5 py-0.5 rounded-full text-[10px]"
-              style={{ background: `${tab.color}18`, color: tab.color }}
-            >
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black"
+              style={{ background: `${tab.color}18`, color: tab.color }}>
               {tab.count}
             </span>
           </button>
         ))}
       </div>
 
-      {/* Timeline */}
       <div className="space-y-3">
         <AnimatePresence>
-          {APPOINTMENTS.map((appt, idx) => {
-            const meta = STATUS[appt.status as keyof typeof STATUS];
+          {displayedAppts.map((appt, idx) => {
+            const meta = STATUS_META[appt.status] || STATUS_META.scheduled;
             const StatusIcon = meta.icon;
+            const d = new Date(appt.appointment_time);
+            const timeStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
             return (
               <motion.div
-                key={appt.id}
-                layout
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                key={appt.id} layout initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
               >
-                <div className="glass-card overflow-hidden flex">
-                  {/* Time column */}
-                  <div
-                    className="flex-shrink-0 w-28 flex flex-col items-center justify-center py-5 gap-1"
-                    style={{ background: "rgba(13,18,38,0.6)", borderRight: "1px solid rgba(99,102,241,0.08)" }}
-                  >
-                    <Clock size={13} style={{ color: "#818cf8" }} />
-                    <span className="text-xs font-black text-white tracking-tight" style={{ fontFamily: "Outfit, sans-serif" }}>
-                      {appt.time}
-                    </span>
-                    <span className="text-[10px] text-[--foreground-muted] font-medium">{appt.duration}</span>
+                <div className="glass-card overflow-hidden flex flex-col md:flex-row group transition-all hover:bg-[rgba(255,255,255,0.02)]" style={{ padding: 0 }}>
+                  <div className="w-1 flex-shrink-0" style={{ background: `linear-gradient(180deg, ${meta.color}, ${meta.color}55)` }} />
+                  
+                  <div className="flex-shrink-0 w-28 flex flex-col items-center justify-center py-5 gap-1.5 border-r border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)]">
+                    <Clock size={14} style={{ color: meta.color }} />
+                    <span className="text-sm font-black text-white tracking-tight" style={{ fontFamily: "Outfit, sans-serif" }}>{timeStr}</span>
+                    <span className="text-[10px] uppercase font-bold text-[var(--fg-muted)]">{appt.consultation_type}</span>
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4">
-                    <div className="flex items-center gap-3.5">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
-                        style={{ background: "linear-gradient(135deg, #6246ea, #7c3aed)" }}
-                      >
-                        {appt.patient.charAt(0)}
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-sm"
+                        style={{ background: `linear-gradient(135deg, ${meta.color}, ${meta.color}aa)` }}>
+                        {appt.patient_name.charAt(0)}
                       </div>
                       <div>
-                        <h3 className="font-bold text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>
-                          {appt.patient}
-                        </h3>
-                        <p className="text-xs text-[--foreground-muted]">{appt.type} · Clinic</p>
+                        <h3 className="font-black text-white text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>{appt.patient_name}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-[11px] text-[var(--fg-muted)] flex items-center justify-center font-semibold bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded-full">{appt.patient_phone}</p>
+                          {appt.payment_mode === "online" && (
+                            <span className="text-[10px] text-[#34d399] border border-[#34d399] px-2 py-0.5 rounded-full font-bold uppercase">{appt.payment_status}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 ml-auto flex-shrink-0">
-                      {/* Badge */}
-                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${meta.cls}`}>
-                        <StatusIcon size={11} />
-                        {meta.label}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-0.5">
-                        <motion.button className="btn btn-ghost btn-icon" whileHover={{ scale: 1.1 }}
-                          style={{ "--color": "#34d399" } as React.CSSProperties}>
-                          <CheckCircle2 size={16} className="text-[--foreground-muted] hover:text-emerald-400 transition-colors" />
-                        </motion.button>
-                        <motion.button className="btn btn-ghost btn-icon" whileHover={{ scale: 1.1 }}>
-                          <Phone size={16} className="text-[--foreground-muted] hover:text-[color:#818cf8] transition-colors" />
-                        </motion.button>
-                        <motion.button className="btn btn-ghost btn-icon" whileHover={{ scale: 1.1 }}>
-                          <MessageSquare size={16} className="text-[--foreground-muted] hover:text-white transition-colors" />
-                        </motion.button>
-                        <motion.button className="btn btn-ghost btn-icon" whileHover={{ scale: 1.1 }}>
-                          <MoreVertical size={16} className="text-[--foreground-muted]" />
-                        </motion.button>
-                      </div>
+                    <div className="flex flex-col items-end gap-2">
+                       <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase ${meta.badgeCls}`}>
+                         <StatusIcon size={12} /> {meta.label}
+                       </div>
+                       <div className="flex gap-2">
+                          {appt.consultation_type === "online" && (
+                             <a href={`https://meet.jit.si/cliniq_${appt.id}`} target="_blank" rel="noreferrer" title="Join Video Call" className="p-2 rounded-xl bg-[rgba(167,139,250,0.1)] text-[#a78bfa] hover:bg-[rgba(167,139,250,0.2)] transition-colors">
+                                <Video size={14} />
+                             </a>
+                          )}
+                          <button onClick={() => setOpenChatFor(openChatFor === appt.id ? null : appt.id)} className="p-2 rounded-xl bg-[rgba(99,102,241,0.1)] text-[#818cf8] hover:bg-[rgba(99,102,241,0.2)] transition-colors" title="Message Patient">
+                            <MessageSquare size={14} />
+                          </button>
+                          {appt.status === "scheduled" && (
+                             <button onClick={() => markStatus(appt.id, "complete")} className="p-2 text-[#34d399] bg-[rgba(52,211,153,0.1)] rounded-xl hover:bg-[rgba(52,211,153,0.2)]" title="Mark Complete">
+                               <CheckCircle2 size={14} />
+                             </button>
+                          )}
+                       </div>
                     </div>
                   </div>
                 </div>
+                {openChatFor === appt.id && (
+                  <div className="mt-2 ml-29">
+                     <PatientChat appointmentId={appt.id} isClinic={true} />
+                  </div>
+                )}
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
+
+      {showScheduleModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="glass-card max-w-md w-full relative">
+                 <button onClick={() => setShowScheduleModal(false)} className="absolute top-4 right-4 text-[var(--fg-muted)]"><XCircle size={20} /></button>
+                 <h3 className="text-xl font-bold text-white mb-6">Schedule Appointment</h3>
+                 <form onSubmit={handleScheduleAppt} className="space-y-4">
+                     <div>
+                       <label className="block text-xs font-semibold text-[var(--fg-muted)] mb-1">Appointment Time</label>
+                       <input type="datetime-local" required className="input w-full bg-[rgba(255,255,255,0.03)] text-sm h-10 px-3 border border-[rgba(255,255,255,0.1)] rounded-xl"
+                         value={newAppt.appointment_time} onChange={(e) => setNewAppt({...newAppt, appointment_time: e.target.value})}
+                       />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-xs font-semibold text-[var(--fg-muted)] mb-1">Consultation Type</label>
+                         <select className="input w-full bg-[rgba(255,255,255,0.03)] text-sm h-10 px-3 border border-[rgba(255,255,255,0.1)] rounded-xl text-white"
+                            value={newAppt.consultation_type} onChange={(e) => setNewAppt({...newAppt, consultation_type: e.target.value})}>
+                            <option value="offline" className="bg-[#0f172a]">In-Clinic (Offline)</option>
+                            <option value="online" className="bg-[#0f172a]">Telemedicine (Online)</option>
+                         </select>
+                       </div>
+                       <div>
+                         <label className="block text-xs font-semibold text-[var(--fg-muted)] mb-1">Payment Mode</label>
+                         <select className="input w-full bg-[rgba(255,255,255,0.03)] text-sm h-10 px-3 border border-[rgba(255,255,255,0.1)] rounded-xl text-white"
+                            value={newAppt.payment_mode} onChange={(e) => setNewAppt({...newAppt, payment_mode: e.target.value})}>
+                            <option value="offline" className="bg-[#0f172a]">Pay at Clinic (Cash)</option>
+                            <option value="online" className="bg-[#0f172a]">Pay Online (UPI QR)</option>
+                         </select>
+                       </div>
+                     </div>
+                     <button type="submit" className="w-full btn btn-primary mt-4">Schedule & Notify Patient</button>
+                 </form>
+             </motion.div>
+          </div>
+      )}
     </div>
   );
 }
